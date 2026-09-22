@@ -1,0 +1,154 @@
+package com.example
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Rule
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.sp
+import com.example.ui.components.RulesGuideContent
+import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.ScannerScreen
+import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.viewmodel.AccountantViewModel
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: AccountantViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            MyApplicationTheme {
+                MainAppScreen(viewModel = viewModel)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainAppScreen(viewModel: AccountantViewModel) {
+    var currentTab by remember { mutableIntStateOf(0) }
+
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("main_scaffold"),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = when (currentTab) {
+                            0 -> "แดชบอร์ดสรุปผลบัญชี"
+                            1 -> "AI Accountant OCR"
+                            2 -> "ประวัติเอกสารบัญชี"
+                            else -> "ขั้นตอน & Schema สกัดข้อมูล"
+                        },
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        },
+        bottomBar = {
+            NavigationBar(
+                modifier = Modifier.testTag("bottom_nav_bar")
+            ) {
+                NavigationBarItem(
+                    selected = currentTab == 0,
+                    onClick = { currentTab = 0 },
+                    icon = { Icon(Icons.Default.Dashboard, contentDescription = "แดชบอร์ด") },
+                    label = { Text("แดชบอร์ด", fontSize = 11.sp) },
+                    modifier = Modifier.testTag("nav_item_dashboard")
+                )
+                NavigationBarItem(
+                    selected = currentTab == 1,
+                    onClick = { currentTab = 1 },
+                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "สแกน") },
+                    label = { Text("สแกน", fontSize = 11.sp) },
+                    modifier = Modifier.testTag("nav_item_scan")
+                )
+                NavigationBarItem(
+                    selected = currentTab == 2,
+                    onClick = { currentTab = 2 },
+                    icon = { Icon(Icons.Default.History, contentDescription = "ประวัติ") },
+                    label = { Text("ประวัติ", fontSize = 11.sp) },
+                    modifier = Modifier.testTag("nav_item_history")
+                )
+                NavigationBarItem(
+                    selected = currentTab == 3,
+                    onClick = { currentTab = 3 },
+                    icon = { Icon(Icons.AutoMirrored.Filled.Rule, contentDescription = "กฎและสกีมา") },
+                    label = { Text("กฎ & Schema", fontSize = 11.sp) },
+                    modifier = Modifier.testTag("nav_item_rules")
+                )
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            when (currentTab) {
+                0 -> DashboardScreen(
+                    viewModel = viewModel,
+                    onNavigateToScan = { currentTab = 1 },
+                    onNavigateToHistory = { currentTab = 2 }
+                )
+                1 -> ScannerScreen(viewModel = viewModel)
+                2 -> HistoryScreen(viewModel = viewModel, onNavigateToScan = { currentTab = 1 })
+                3 -> RulesGuideContent()
+            }
+        }
+    }
+}
+
+/**
+ * Kept for test suite compatibility
+ */
+@Composable
+fun Greeting(name: String, modifier: Modifier = Modifier) {
+    Text(text = "Hello $name!", modifier = modifier)
+}
+
+@Preview(showBackground = true)
+@Composable
+fun GreetingPreview() {
+    MyApplicationTheme { Greeting("Android") }
+}

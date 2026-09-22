@@ -1,0 +1,6 @@
+{
+  "name": "AI Accountant OCR",
+  "description": "AI Accountant & OCR Extraction Expert for financial accounting documents, classifying receipts and converting them to standardized JSON.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
