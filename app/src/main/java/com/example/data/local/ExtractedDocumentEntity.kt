@@ -38,7 +38,12 @@ data class ExtractedDocumentEntity(
     /** Absolute path of the original document image stored in app-private storage. */
     val imagePath: String? = null,
     val verifiedAt: Long? = null,
-    val updatedAt: Long? = null
+    val updatedAt: Long? = null,
+    // ---- Added in DB version 3 ----
+    /** Original uploaded file (e.g. a PDF slip) when the source was not a camera image. */
+    val sourceFilePath: String? = null,
+    /** When this document was last sent to Google Sheets (null = not sent). */
+    val sheetSyncedAt: Long? = null
 ) {
     fun toAccountingDocument(): AccountingDocumentJson {
         val parsedItems = try {
@@ -94,7 +99,8 @@ data class ExtractedDocumentEntity(
             model: AccountingDocumentJson,
             rawJson: String,
             sampleId: String? = null,
-            imagePath: String? = null
+            imagePath: String? = null,
+            sourceFilePath: String? = null
         ): ExtractedDocumentEntity {
             return ExtractedDocumentEntity(
                 documentType = model.documentType ?: "OTHER",
@@ -114,7 +120,8 @@ data class ExtractedDocumentEntity(
                 rawJson = rawJson,
                 sampleId = sampleId,
                 status = DocumentStatus.PENDING.code,
-                imagePath = imagePath
+                imagePath = imagePath,
+                sourceFilePath = sourceFilePath
             )
         }
     }

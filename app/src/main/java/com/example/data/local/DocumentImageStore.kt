@@ -35,6 +35,20 @@ class DocumentImageStore(context: Context) {
         file.absolutePath
     }
 
+    /** Saves an original uploaded file (PDF, CSV, XLSX...) unchanged and returns its absolute path. */
+    suspend fun saveBytes(bytes: ByteArray, extension: String): String = withContext(Dispatchers.IO) {
+        val safeExt = extension.lowercase().filter { it.isLetterOrDigit() }.take(8).ifEmpty { "bin" }
+        val file = File(dir, "${UUID.randomUUID()}.$safeExt")
+        file.writeBytes(bytes)
+        file.absolutePath
+    }
+
+    suspend fun readBytes(path: String?): ByteArray? = withContext(Dispatchers.IO) {
+        if (path.isNullOrBlank()) return@withContext null
+        val file = File(path)
+        if (file.exists()) file.readBytes() else null
+    }
+
     suspend fun load(path: String?): Bitmap? = withContext(Dispatchers.IO) {
         if (path.isNullOrBlank()) return@withContext null
         val file = File(path)

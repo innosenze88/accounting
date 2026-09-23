@@ -101,6 +101,7 @@ fun ScannerScreen(
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
     val currentRecord by viewModel.currentRecord.collectAsStateWithLifecycle()
     val isDemoResult by viewModel.isDemoResult.collectAsStateWithLifecycle()
+    val selectedPdfName by viewModel.selectedPdfName.collectAsStateWithLifecycle()
 
     var activeResultTab by remember { mutableIntStateOf(0) }
 
@@ -287,6 +288,15 @@ fun ScannerScreen(
                         OcrScanningOverlay()
                     }
                 }
+            }
+
+            selectedPdfName?.let { name ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "ไฟล์ PDF: $name (AI จะอ่านไฟล์ต้นฉบับทุกหน้า รูปด้านบนเป็นหน้าแรก)",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))

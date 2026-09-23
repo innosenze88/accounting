@@ -27,9 +27,12 @@ class DocumentRepository(
     suspend fun savePendingDocument(
         document: AccountingDocumentJson,
         rawJson: String,
-        imagePath: String?
+        imagePath: String?,
+        sourceFilePath: String? = null
     ): Long {
-        val entity = ExtractedDocumentEntity.fromModel(document, rawJson, sampleId = null, imagePath = imagePath)
+        val entity = ExtractedDocumentEntity.fromModel(
+            document, rawJson, sampleId = null, imagePath = imagePath, sourceFilePath = sourceFilePath
+        )
         return documentDao.insertDocument(entity)
     }
 
@@ -61,14 +64,23 @@ class DocumentRepository(
 
     suspend fun loadImage(path: String?): android.graphics.Bitmap? = imageStore.load(path)
 
+    suspend fun saveFile(bytes: ByteArray, extension: String): String = imageStore.saveBytes(bytes, extension)
+
+    suspend fun readFile(path: String?): ByteArray? = imageStore.readBytes(path)
+
+    suspend fun getVerifiedNotSynced(): List<ExtractedDocumentEntity> = documentDao.getVerifiedNotSynced()
+
+    suspend fun markSheetSynced(id: Long) = documentDao.markSheetSynced(id, System.currentTimeMillis())
+
     suspend fun deleteDocument(id: Long) {
         val entity = documentDao.getDocumentById(id)
         documentDao.deleteById(id)
         imageStore.delete(entity?.imagePath)
+        imageStore.delete(entity?.sourceFilePath)
     }
 
     suspend fun deleteAllDocuments() {
-        val paths = documentDao.getAllImagePaths()
+        val paths = documentDao.getAllImagePaths() + documentDao.getAllSourceFilePaths()
         documentDao.deleteAll()
         paths.forEach { imageStore.delete(it) }
     }

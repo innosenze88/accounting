@@ -27,6 +27,19 @@ interface DocumentDao {
     @Query("SELECT imagePath FROM extracted_documents WHERE imagePath IS NOT NULL")
     suspend fun getAllImagePaths(): List<String>
 
+    @Query("SELECT sourceFilePath FROM extracted_documents WHERE sourceFilePath IS NOT NULL")
+    suspend fun getAllSourceFilePaths(): List<String>
+
+    /** Verified real documents that have not been sent to Google Sheets yet (or were edited after sending). */
+    @Query(
+        "SELECT * FROM extracted_documents WHERE status = 'VERIFIED' AND sampleId IS NULL " +
+            "AND (sheetSyncedAt IS NULL OR sheetSyncedAt < verifiedAt) ORDER BY createdAt"
+    )
+    suspend fun getVerifiedNotSynced(): List<ExtractedDocumentEntity>
+
+    @Query("UPDATE extracted_documents SET sheetSyncedAt = :time WHERE id = :id")
+    suspend fun markSheetSynced(id: Long, time: Long)
+
     // Default strategy is ABORT: an insert must never silently overwrite an existing row.
     @Insert
     suspend fun insertDocument(document: ExtractedDocumentEntity): Long

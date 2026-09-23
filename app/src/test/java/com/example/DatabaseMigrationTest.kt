@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.AppDatabase
 import com.example.data.local.ExtractedDocumentEntity
+import com.example.data.local.ImportedFileEntity
 import com.example.data.local.countsInAccounting
 import com.example.data.model.DocumentStatus
 import kotlinx.coroutines.runBlocking
@@ -38,7 +39,7 @@ class DatabaseMigrationTest {
     """.trimIndent()
 
     @Test
-    fun `migration 1 to 2 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
+    fun `migration 1 to 3 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
         val name = "migration_test.db"
         context.deleteDatabase(name)
 
@@ -66,6 +67,18 @@ class DatabaseMigrationTest {
         assertEquals(DocumentStatus.PENDING.code, row.status)
         assertNull(row.imagePath)
         assertFalse("un-reviewed rows must not count in totals", row.countsInAccounting())
+        assertNull(row.sourceFilePath)
+        assertNull(row.sheetSyncedAt)
+
+        // v3 table exists and works
+        val importId = roomDb.importedFileDao().insert(
+            ImportedFileEntity(
+                kind = "TABLE", fileName = "a.csv", mimeType = "text/csv", storedPath = null,
+                reportType = null, reportDate = null, extractedJson = null, rowCount = 2,
+                targetSheet = "Import", status = "SAVED", errorMessage = null, sheetSyncedAt = null
+            )
+        )
+        assertEquals("a.csv", roomDb.importedFileDao().getById(importId)?.fileName)
 
         roomDb.close()
         context.deleteDatabase(name)
