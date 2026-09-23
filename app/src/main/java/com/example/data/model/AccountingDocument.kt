@@ -96,3 +96,21 @@ enum class TransactionType(val code: String, val titleTh: String, val descriptio
         }
     }
 }
+
+/**
+ * Review status of a scanned document.
+ * PENDING  = AI extracted, not yet checked by a person (never counted in totals)
+ * VERIFIED = checked and approved by a person (counted in totals)
+ * REJECTED = person marked it as wrong / not to be used
+ */
+enum class DocumentStatus(val code: String, val titleTh: String) {
+    PENDING("PENDING", "รอตรวจสอบ"),
+    VERIFIED("VERIFIED", "ตรวจแล้ว"),
+    REJECTED("REJECTED", "ปฏิเสธ");
+
+    companion object {
+        fun fromCode(code: String?): DocumentStatus {
+            return entries.find { it.code.equals(code?.trim(), ignoreCase = true) } ?: PENDING
+        }
+    }
+}

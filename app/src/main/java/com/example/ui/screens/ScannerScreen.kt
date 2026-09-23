@@ -40,7 +40,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -76,6 +75,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.documentStatus
+import com.example.data.model.DocumentStatus
+import com.example.ui.components.DocumentReviewForm
+import com.example.ui.components.DocumentStatusBadge
 import com.example.ui.components.ExtractedDocumentCard
 import com.example.ui.components.JsonViewer
 import com.example.ui.viewmodel.AccountantViewModel
@@ -96,7 +99,8 @@ fun ScannerScreen(
     val extractedDoc by viewModel.extractedDocument.collectAsStateWithLifecycle()
     val rawJsonOutput by viewModel.rawJsonOutput.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
-    val isSaved by viewModel.isSaved.collectAsStateWithLifecycle()
+    val currentRecord by viewModel.currentRecord.collectAsStateWithLifecycle()
+    val isDemoResult by viewModel.isDemoResult.collectAsStateWithLifecycle()
 
     var activeResultTab by remember { mutableIntStateOf(0) }
 
@@ -107,14 +111,24 @@ fun ScannerScreen(
         uri?.let {
             try {
                 val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, it))
+                    ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, it)) { decoder, info, _ ->
+                        // Software bitmap: can be scaled/compressed safely. Limit size to avoid OOM.
+                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        val w = info.size.width
+                        val h = info.size.height
+                        val maxSide = maxOf(w, h)
+                        if (maxSide > MAX_DECODE_DIMENSION) {
+                            val ratio = MAX_DECODE_DIMENSION.toFloat() / maxSide
+                            decoder.setTargetSize((w * ratio).toInt(), (h * ratio).toInt())
+                        }
+                    }
                 } else {
                     @Suppress("DEPRECATION")
                     MediaStore.Images.Media.getBitmap(context.contentResolver, it)
                 }
                 viewModel.setImageBitmap(bitmap)
             } catch (e: Exception) {
-                // handle error
+                viewModel.showError("เปิดรูปไม่สำเร็จ: ${e.localizedMessage ?: "Unknown"}")
             }
         }
     }
@@ -277,8 +291,9 @@ fun ScannerScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Main OCR Extraction Button
-            Button(
+            // Main OCR Extraction Button (hidden when viewing an already-saved record,
+            // so the same document is not saved twice by accident)
+            if (currentRecord == null) Button(
                 onClick = { viewModel.performExtraction() },
                 enabled = !isExtracting,
                 modifier = Modifier
@@ -361,26 +376,30 @@ fun ScannerScreen(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (isSaved) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            tint = Color(0xFF2E7D32),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "บันทึกในประวัติแล้ว",
-                            fontSize = 11.sp,
-                            color = Color(0xFF2E7D32),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                if (isDemoResult) {
+                    DocumentStatusBadge(statusCode = null, isSample = true)
+                } else {
+                    currentRecord?.let { DocumentStatusBadge(statusCode = it.status) }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+
+            if (isDemoResult) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "ผลจากเอกสารตัวอย่าง ใช้ทดสอบเท่านั้น — ไม่ถูกบันทึกและไม่นับในยอดบัญชี",
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(10.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             // Result Tabs (Summary View vs Raw JSON Schema)
             TabRow(selectedTabIndex = activeResultTab) {
@@ -410,8 +429,35 @@ fun ScannerScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
+            val record = currentRecord
+            val recordStatus = record?.documentStatus()
             if (activeResultTab == 0) {
-                ExtractedDocumentCard(doc = extractedDoc!!)
+                if (record != null && !isDemoResult && recordStatus == DocumentStatus.PENDING) {
+                    // Human review step: nothing counts in the books until a person confirms it.
+                    val initialDoc = remember(record.id) { record.toAccountingDocument() }
+                    DocumentReviewForm(
+                        initial = initialDoc,
+                        formKey = record.id,
+                        onVerify = { reviewed -> viewModel.verifyCurrent(reviewed) },
+                        onReject = { viewModel.rejectCurrent() }
+                    )
+                } else {
+                    ExtractedDocumentCard(doc = extractedDoc!!)
+                    if (record != null && !isDemoResult && recordStatus != DocumentStatus.PENDING) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.reopenCurrent() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("reopen_button"),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("แก้ไข / ส่งกลับไปตรวจใหม่", fontSize = 13.sp)
+                        }
+                    }
+                }
             } else if (rawJsonOutput != null) {
                 JsonViewer(jsonString = rawJsonOutput!!)
             }
@@ -514,3 +560,5 @@ private fun OcrScanningOverlay() {
         }
     }
 }
+
+private const val MAX_DECODE_DIMENSION = 2400

@@ -71,6 +71,10 @@ secrets {
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
 }
 
+// Export Room schema JSON (commit the app/schemas folder) so every DB version is
+// recorded and migrations can be tested instead of wiping user data.
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
 // Some unused dependencies are commented out below instead of being removed.

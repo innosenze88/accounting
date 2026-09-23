@@ -66,6 +66,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.ExtractedDocumentEntity
+import com.example.data.local.countsInAccounting
+import com.example.data.local.documentStatus
+import com.example.data.model.DocumentStatus
 import com.example.data.model.DocumentType
 import com.example.ui.components.DocumentTypeBadge
 import com.example.ui.components.ExtractedDocumentCard
@@ -80,7 +83,13 @@ fun DashboardScreen(
     onNavigateToHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val historyList by viewModel.historyList.collectAsStateWithLifecycle()
+    val allDocuments by viewModel.historyList.collectAsStateWithLifecycle()
+    // Every figure on the dashboard is built ONLY from real documents a person has verified.
+    // Samples and PENDING/REJECTED documents are never counted.
+    val historyList = remember(allDocuments) { allDocuments.filter { it.countsInAccounting() } }
+    val pendingCount = remember(allDocuments) {
+        allDocuments.count { it.sampleId == null && it.documentStatus() == DocumentStatus.PENDING }
+    }
     var selectedEntityForDetail by remember { mutableStateOf<ExtractedDocumentEntity?>(null) }
 
     // Statistical Calculations
@@ -143,6 +152,46 @@ fun DashboardScreen(
     ) {
         item {
             Spacer(modifier = Modifier.height(4.dp))
+        }
+
+        if (pendingCount > 0) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onNavigateToHistory)
+                        .testTag("dashboard_pending_banner"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "มี $pendingCount เอกสารรอตรวจสอบ",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF6D4C00)
+                            )
+                            Text(
+                                text = "ยังไม่ถูกนับในยอดด้านล่าง — แตะเพื่อไปตรวจและยืนยัน",
+                                fontSize = 12.sp,
+                                color = Color(0xFF6D4C00)
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = Color(0xFF6D4C00)
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
             // Dashboard Title Banner
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -584,27 +633,19 @@ fun DashboardScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "เริ่มต้นสแกนบิลจริง หรือกดปุ่มด้านล่างเพื่อโหลดชุดข้อมูลตัวอย่าง 4 รายการเพื่อทดสอบแดชบอร์ด",
+                            text = "แดชบอร์ดแสดงเฉพาะเอกสารที่ตรวจสอบและยืนยันแล้ว เริ่มต้นด้วยการสแกนบิลจริง แล้วกดยืนยันหลังตรวจข้อมูล",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(14.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = onNavigateToScan,
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("สแกนเอกสาร", fontSize = 12.sp)
-                            }
-                            OutlinedButton(
-                                onClick = { viewModel.populateSampleDemoData() },
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text("โหลดตัวอย่าง 4 ฉบับ", fontSize = 12.sp)
-                            }
+                        Button(
+                            onClick = onNavigateToScan,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("สแกนเอกสาร", fontSize = 12.sp)
                         }
                     }
                 }

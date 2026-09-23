@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,14 +44,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.example.data.local.ExtractedDocumentEntity
+import com.example.data.local.countsInAccounting
+import com.example.data.local.documentStatus
+import com.example.data.model.DocumentStatus
+import com.example.ui.components.DocumentStatusBadge
 import com.example.ui.components.DocumentTypeBadge
 import com.example.ui.components.ExtractedDocumentCard
 import com.example.ui.components.JsonViewer
@@ -67,20 +76,26 @@ fun HistoryScreen(
     var selectedEntityForDetail by remember { mutableStateOf<ExtractedDocumentEntity?>(null) }
 
     val filteredList = remember(historyList, selectedFilterType) {
-        if (selectedFilterType == null) {
-            historyList
-        } else {
-            historyList.filter { it.documentType.equals(selectedFilterType, ignoreCase = true) }
+        when (selectedFilterType) {
+            null -> historyList
+            FILTER_PENDING -> historyList.filter { it.sampleId == null && it.documentStatus() == DocumentStatus.PENDING }
+            else -> historyList.filter { it.documentType.equals(selectedFilterType, ignoreCase = true) }
         }
     }
 
-    val totalIncome = remember(historyList) {
-        historyList.filter { it.transactionType.equals("INCOME", ignoreCase = true) }
+    // Totals only include real documents that a person has verified.
+    val verifiedList = remember(historyList) { historyList.filter { it.countsInAccounting() } }
+    val pendingCount = remember(historyList) {
+        historyList.count { it.sampleId == null && it.documentStatus() == DocumentStatus.PENDING }
+    }
+
+    val totalIncome = remember(verifiedList) {
+        verifiedList.filter { it.transactionType.equals("INCOME", ignoreCase = true) }
             .sumOf { it.totalAmount ?: 0.0 }
     }
 
-    val totalExpense = remember(historyList) {
-        historyList.filter { it.transactionType.equals("EXPENSE", ignoreCase = true) }
+    val totalExpense = remember(verifiedList) {
+        verifiedList.filter { it.transactionType.equals("EXPENSE", ignoreCase = true) }
             .sumOf { it.totalAmount ?: 0.0 }
     }
 
@@ -97,7 +112,7 @@ fun HistoryScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "สรุปยอดรายการบัญชีที่สแกนแล้ว (${historyList.size} เอกสาร)",
+                    text = "สรุปยอดเฉพาะเอกสารที่ตรวจแล้ว (${verifiedList.size} จาก ${historyList.size} เอกสาร)",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -182,6 +197,14 @@ fun HistoryScreen(
             }
             item {
                 FilterChip(
+                    selected = selectedFilterType == FILTER_PENDING,
+                    onClick = { selectedFilterType = if (selectedFilterType == FILTER_PENDING) null else FILTER_PENDING },
+                    label = { Text("รอตรวจสอบ ($pendingCount)") },
+                    modifier = Modifier.testTag("filter_pending")
+                )
+            }
+            item {
+                FilterChip(
                     selected = selectedFilterType == "RECEIPT",
                     onClick = { selectedFilterType = if (selectedFilterType == "RECEIPT") null else "RECEIPT" },
                     label = { Text("ใบเสร็จ (RECEIPT)") }
@@ -262,6 +285,17 @@ fun HistoryScreen(
         AlertDialog(
             onDismissRequest = { selectedEntityForDetail = null },
             confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.loadFromHistory(entity)
+                        selectedEntityForDetail = null
+                        onNavigateToScan()
+                    }
+                ) {
+                    Text(if (entity.sampleId == null && entity.documentStatus() == DocumentStatus.PENDING) "ตรวจสอบ & ยืนยัน" else "เปิดในหน้าสแกน")
+                }
+            },
+            dismissButton = {
                 TextButton(onClick = { selectedEntityForDetail = null }) {
                     Text("ปิด")
                 }
@@ -277,8 +311,23 @@ fun HistoryScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
                         .padding(vertical = 4.dp)
                 ) {
+                    DocumentStatusBadge(statusCode = entity.status, isSample = entity.sampleId != null)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (entity.imagePath != null) {
+                        AsyncImage(
+                            model = File(entity.imagePath),
+                            contentDescription = "รูปเอกสารต้นฉบับ",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     ExtractedDocumentCard(doc = doc)
                     Spacer(modifier = Modifier.height(12.dp))
                     JsonViewer(jsonString = entity.rawJson)
@@ -328,7 +377,9 @@ private fun HistoryItemCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+            DocumentStatusBadge(statusCode = entity.status, isSample = entity.sampleId != null)
+            Spacer(modifier = Modifier.height(6.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -362,3 +413,5 @@ private fun HistoryItemCard(
         }
     }
 }
+
+private const val FILTER_PENDING = "__PENDING__"
