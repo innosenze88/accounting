@@ -26,7 +26,9 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -61,6 +63,11 @@ import com.example.data.importer.FileKind
 import com.example.data.local.ImportKind
 import com.example.data.local.ImportStatus
 import com.example.data.local.ImportedFileEntity
+import com.example.data.local.ExtractedDocumentEntity
+import com.example.data.local.documentStatus
+import com.example.data.local.quickVerifyProblem
+import com.example.data.model.DocumentStatus
+import com.example.data.model.TransactionType
 import com.example.ui.components.RulesGuideContent
 import com.example.ui.viewmodel.AccountantViewModel
 import java.text.SimpleDateFormat
@@ -91,10 +98,13 @@ fun ImportScreen(
     val message by viewModel.importMessage.collectAsStateWithLifecycle()
     val imported by viewModel.importedFiles.collectAsStateWithLifecycle()
     val settings by viewModel.aiSettings.collectAsStateWithLifecycle()
+    val batch by viewModel.batchItems.collectAsStateWithLifecycle()
+    val allDocuments by viewModel.historyList.collectAsStateWithLifecycle()
     var showRules by rememberSaveable { mutableStateOf(false) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { viewModel.onFilePicked(it) }
+    // Several files can be selected at once (long-press to select more in the file picker).
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) viewModel.onFilesPicked(uris)
     }
 
     if (showRules) {
@@ -121,9 +131,10 @@ fun ImportScreen(
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("นำเข้าไฟล์จากอีเมล / เครื่อง", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Text(
-                    "• กดปุ่มด้านล่างเพื่อเลือกไฟล์ หรือ\n" +
+                    "• กดปุ่มด้านล่างเพื่อเลือกไฟล์ — เลือกได้หลายไฟล์พร้อมกัน (กดค้างที่ไฟล์แรก แล้วแตะไฟล์อื่นเพิ่ม)\n" +
                         "• ใน Gmail เปิดไฟล์แนบ → แชร์ (Share) → เลือกแอปนี้\n" +
-                        "รองรับ: PDF (สลิป/ใบเสร็จ/รายงาน eZee), รูปภาพ, CSV, Excel (.xlsx)",
+                        "รองรับ: PDF (สลิป/ใบเสร็จ/รายงาน eZee), รูปภาพ, CSV, Excel (.xlsx)\n" +
+                        "เลือกหลายไฟล์: PDF/รูป = อ่านเป็นสลิป/ใบเสร็จอัตโนมัติ, CSV/Excel = บันทึกเป็นตาราง",
                     fontSize = 12.sp
                 )
                 Button(
@@ -136,9 +147,29 @@ fun ImportScreen(
                 ) {
                     Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("เลือกไฟล์")
+                    Text("เลือกไฟล์ (ได้หลายไฟล์)")
                 }
+                Text(
+                    "ยอดในแดชบอร์ดนับเฉพาะสลิป/ใบเสร็จที่กด \"ยืนยัน\" แล้ว — รายงาน eZee และตาราง CSV/Excel เก็บไว้ดู/ส่ง Google Sheets แต่ไม่นับรวมในยอด",
+                    fontSize = 11.sp,
+                    color = Color(0xFFE65100)
+                )
             }
+        }
+
+        if (batch.isNotEmpty()) {
+            BatchResultCard(
+                items = batch,
+                allDocuments = allDocuments,
+                busy = busy,
+                noteFor = { entity -> viewModel.batchDocumentNote(entity, allDocuments) },
+                onOpen = { entity ->
+                    viewModel.loadFromHistory(entity)
+                    onGoToScanner()
+                },
+                onVerifyAll = { ids -> viewModel.verifyDocuments(ids) },
+                onClose = { viewModel.clearBatch() }
+            )
         }
 
         if (busy) {
@@ -410,5 +441,141 @@ private fun ImportedFileRow(
                 Icon(Icons.Default.DeleteOutline, contentDescription = "ลบ", tint = MaterialTheme.colorScheme.error)
             }
         }
+    }
+}
+
+/** Results of a multi-file upload, with per-file status and a bulk "approve" button. */
+@Composable
+private fun BatchResultCard(
+    items: List<AccountantViewModel.BatchItem>,
+    allDocuments: List<ExtractedDocumentEntity>,
+    busy: Boolean,
+    noteFor: (ExtractedDocumentEntity) -> String?,
+    onOpen: (ExtractedDocumentEntity) -> Unit,
+    onVerifyAll: (List<Long>) -> Unit,
+    onClose: () -> Unit
+) {
+    val byId = remember(allDocuments) { allDocuments.associateBy { it.id } }
+    val docs = items.mapNotNull { it.documentId?.let { id -> byId[id] } }
+    // Only complete, non-duplicate PENDING documents can be approved in bulk.
+    val ready = docs.filter { it.quickVerifyProblem() == null && noteFor(it) == null }
+    val readyIncome = ready.filter { TransactionType.fromCode(it.transactionType) == TransactionType.INCOME }
+        .sumOf { it.totalAmount ?: 0.0 }
+    val readyExpense = ready.filter { TransactionType.fromCode(it.transactionType) == TransactionType.EXPENSE }
+        .sumOf { it.totalAmount ?: 0.0 }
+    val done = items.count { it.state != AccountantViewModel.BatchState.WAITING && it.state != AccountantViewModel.BatchState.READING }
+    var confirm by remember { mutableStateOf(false) }
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("batch_result_card")
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "อัปโหลดหลายไฟล์ ($done/${items.size})",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onClose, enabled = !busy) { Text("ปิด") }
+            }
+
+            items.forEach { item ->
+                val entity = item.documentId?.let { byId[it] }
+                HorizontalDivider()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(item.fileName, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (entity != null) {
+                            val status = entity.documentStatus()
+                            val tx = TransactionType.fromCode(entity.transactionType)
+                            Text(
+                                "${tx?.titleTh ?: "? รายรับ/รายจ่าย"} • " +
+                                    (entity.totalAmount?.let { String.format("%,.2f ฿", it) } ?: "ไม่มียอด") +
+                                    (entity.date?.let { " • $it" } ?: "") + " • " + status.titleTh,
+                                fontSize = 12.sp,
+                                color = when (status) {
+                                    DocumentStatus.VERIFIED -> Color(0xFF2E7D32)
+                                    DocumentStatus.REJECTED -> MaterialTheme.colorScheme.error
+                                    DocumentStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                            if (status == DocumentStatus.PENDING) {
+                                noteFor(entity)?.let {
+                                    Text(it, fontSize = 11.sp, color = Color(0xFFE65100))
+                                }
+                            }
+                        } else {
+                            Text(
+                                item.state.titleTh + (item.message?.let { " — $it" } ?: ""),
+                                fontSize = 12.sp,
+                                color = when (item.state) {
+                                    AccountantViewModel.BatchState.FAILED -> MaterialTheme.colorScheme.error
+                                    AccountantViewModel.BatchState.TABLE -> Color(0xFF2E7D32)
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
+                    if (item.state == AccountantViewModel.BatchState.READING) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    }
+                    if (entity != null) {
+                        TextButton(onClick = { onOpen(entity) }, enabled = !busy) { Text("ตรวจ") }
+                    }
+                }
+            }
+
+            if (ready.isNotEmpty()) {
+                HorizontalDivider()
+                Text(
+                    "พร้อมยืนยัน ${ready.size} ใบ — รายรับ ${String.format("%,.2f ฿", readyIncome)} • รายจ่าย ${String.format("%,.2f ฿", readyExpense)}",
+                    fontSize = 12.sp
+                )
+                Button(
+                    onClick = { confirm = true },
+                    enabled = !busy,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("batch_verify_all_button")
+                ) { Text("ยืนยันทั้งหมด ${ready.size} ใบ → นับเข้ายอด") }
+            }
+            val needReview = docs.count { it.documentStatus() == DocumentStatus.PENDING && noteFor(it) != null }
+            if (needReview > 0) {
+                Text(
+                    "อีก $needReview ใบข้อมูลไม่ครบหรืออาจซ้ำ — กด \"ตรวจ\" เพื่อดู/แก้แล้วยืนยันทีละใบ",
+                    fontSize = 11.sp,
+                    color = Color(0xFFE65100)
+                )
+            }
+        }
+    }
+
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("ยืนยัน ${ready.size} เอกสาร?") },
+            text = {
+                Text(
+                    "ยอดเหล่านี้จะถูกนับเข้าแดชบอร์ดทันที\n" +
+                        "รายรับ ${String.format("%,.2f ฿", readyIncome)}\nรายจ่าย ${String.format("%,.2f ฿", readyExpense)}\n\n" +
+                        "AI อาจอ่านผิดได้ — ถ้ายังไม่แน่ใจ ให้กด \"ตรวจ\" ดูทีละใบก่อน (แก้ไขภายหลังได้ที่หน้าประวัติ)"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirm = false
+                    onVerifyAll(ready.map { it.id })
+                }) { Text("ยืนยันทั้งหมด") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("ยกเลิก") } }
+        )
     }
 }

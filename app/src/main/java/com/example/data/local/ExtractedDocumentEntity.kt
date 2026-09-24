@@ -136,3 +136,35 @@ fun ExtractedDocumentEntity.documentStatus(): DocumentStatus = DocumentStatus.fr
  */
 fun ExtractedDocumentEntity.countsInAccounting(): Boolean =
     sampleId == null && documentStatus() == DocumentStatus.VERIFIED
+
+private val ISO_DATE = Regex("""^\d{4}-\d{2}-\d{2}$""")
+
+/**
+ * Why this PENDING document cannot be approved in bulk (null = the data is complete).
+ * Uses the same blocking rules as the review form, so a bulk approval never lets through
+ * something the form would refuse.
+ */
+fun ExtractedDocumentEntity.quickVerifyProblem(): String? {
+    if (sampleId != null) return "เอกสารตัวอย่าง"
+    if (documentStatus() != DocumentStatus.PENDING) return "ไม่ได้อยู่ในสถานะรอตรวจ"
+    if (com.example.data.model.TransactionType.fromCode(transactionType) == null) return "ยังไม่รู้ว่ารายรับหรือรายจ่าย"
+    val total = totalAmount ?: return "ไม่มียอดรวม"
+    if (total.isNaN() || total < 0) return "ยอดรวมไม่ถูกต้อง"
+    if (total == 0.0) return "ยอดรวมเป็น 0"
+    val d = date?.trim()
+    if (!d.isNullOrEmpty() && !ISO_DATE.matches(d)) return "รูปแบบวันที่ผิด"
+    if (d != null && (d.take(4).toIntOrNull() ?: 0) > 2400) return "ปีเป็น พ.ศ."
+    return null
+}
+
+/** Same document already saved (same no. + total, or same date + total + seller) and not rejected. */
+fun ExtractedDocumentEntity.looksLikeDuplicateOf(other: ExtractedDocumentEntity): Boolean {
+    if (other.id == id || other.sampleId != null || other.documentStatus() == DocumentStatus.REJECTED) return false
+    val sameTotal = totalAmount != null && other.totalAmount != null &&
+        kotlin.math.abs(totalAmount - other.totalAmount) < 0.005
+    if (!sameTotal) return false
+    val no = documentNo?.trim()?.lowercase()
+    if (!no.isNullOrEmpty() && no == other.documentNo?.trim()?.lowercase()) return true
+    return date != null && date == other.date &&
+        !sellerName.isNullOrBlank() && sellerName.trim().equals(other.sellerName?.trim(), ignoreCase = true)
+}

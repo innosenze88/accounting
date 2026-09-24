@@ -162,8 +162,14 @@ Never invent values. Use null when something is not in the report."""
         return if (year > 2400) "${year - 543}${date.substring(4)}" else date
     }
 
-    private fun JSONObject.optNumber(key: String): Double? =
-        if (has(key) && !isNull(key)) optDouble(key).takeUnless { it.isNaN() } else null
+    /** Numbers may come back as text ("1,250.00", "฿1250") — strip separators before parsing. */
+    private fun JSONObject.optNumber(key: String): Double? {
+        if (!has(key) || isNull(key)) return null
+        return when (val v = opt(key)) {
+            is Number -> v.toDouble().takeUnless { it.isNaN() }
+            else -> v.toString().replace(Regex("[,฿\\sบาท]"), "").toDoubleOrNull()
+        }
+    }
 
     private fun JSONObject.optText(key: String): String? =
         if (has(key) && !isNull(key)) optString(key, "").ifEmpty { null } else null

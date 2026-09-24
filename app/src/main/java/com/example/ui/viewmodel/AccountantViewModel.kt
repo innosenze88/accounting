@@ -9,6 +9,9 @@ import com.example.BuildConfig
 import com.example.data.local.AppDatabase
 import com.example.data.local.DocumentImageStore
 import com.example.data.local.ExtractedDocumentEntity
+import com.example.data.local.looksLikeDuplicateOf
+import com.example.data.local.quickVerifyProblem
+import com.example.data.model.TransactionType
 import com.example.data.model.AccountingDocumentJson
 import com.example.data.model.DocumentStatus
 import com.example.data.importer.FileImporter
@@ -586,7 +589,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 )
                 clearPendingImport()
-                _importMessage.value = "✓ บันทึกรายงานแล้ว" + sendImportToSheets(id)
+                _importMessage.value = "✓ บันทึกรายงานแล้ว (รายงาน eZee ไม่ถูกนับรวมในยอดแดชบอร์ด)" + sendImportToSheets(id)
             } catch (e: Exception) {
                 Log.e(TAG, "Save report failed", e)
                 _importMessage.value = "✕ บันทึกไม่สำเร็จ: ${e.localizedMessage}"
@@ -621,7 +624,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 )
                 clearPendingImport()
-                _importMessage.value = "✓ บันทึกไฟล์แล้ว (${table.rows.size} แถว)" + sendImportToSheets(id)
+                _importMessage.value = "✓ บันทึกไฟล์แล้ว (${table.rows.size} แถว — ตารางไม่ถูกนับรวมในยอดแดชบอร์ด)" + sendImportToSheets(id)
             } catch (e: Exception) {
                 Log.e(TAG, "Save table failed", e)
                 _importMessage.value = "✕ บันทึกไม่สำเร็จ: ${e.localizedMessage}"
@@ -689,6 +692,214 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                 " — แต่ส่งไป Google Sheets ไม่สำเร็จ: $msg"
             }
         )
+    }
+
+    // ================================================================ Batch import (many files at once)
+
+    enum class BatchState(val titleTh: String) {
+        WAITING("รอคิว"),
+        READING("กำลังอ่าน..."),
+        DOCUMENT("อ่านแล้ว — รอยืนยัน"),
+        TABLE("บันทึกตารางแล้ว"),
+        FAILED("ไม่สำเร็จ"),
+        SKIPPED("ข้าม")
+    }
+
+    /** One file in a multi-file upload. [documentId] is set when it became an accounting document. */
+    data class BatchItem(
+        val index: Int,
+        val fileName: String,
+        val state: BatchState,
+        val message: String? = null,
+        val documentId: Long? = null
+    )
+
+    private val _batchItems = MutableStateFlow<List<BatchItem>>(emptyList())
+    val batchItems: StateFlow<List<BatchItem>> = _batchItems.asStateFlow()
+
+    private fun updateBatch(index: Int, change: (BatchItem) -> BatchItem) {
+        _batchItems.value = _batchItems.value.map { if (it.index == index) change(it) else it }
+    }
+
+    fun clearBatch() {
+        if (!_isImportBusy.value) _batchItems.value = emptyList()
+    }
+
+    /** Upload button / "Share" with one or more files. One file keeps the old step-by-step flow. */
+    fun onFilesPicked(uris: List<Uri>) {
+        val list = uris.distinct()
+        when {
+            list.isEmpty() -> return
+            list.size == 1 -> {
+                _batchItems.value = emptyList()
+                onFilePicked(list[0])
+            }
+            else -> startBatch(list)
+        }
+    }
+
+    /**
+     * Reads every file one after another:
+     * PDF / image -> AI reads it as a slip / receipt / bill and it is saved as PENDING (needs approval)
+     * CSV / Excel -> saved as a table (sent to Google Sheets when set up; never counted in totals)
+     */
+    private fun startBatch(uris: List<Uri>) {
+        if (_isImportBusy.value) {
+            _importMessage.value = "✕ กำลังทำงานอยู่ รอให้เสร็จก่อนแล้วเลือกไฟล์ใหม่"
+            return
+        }
+        clearPendingImport()
+        _importMessage.value = null
+        _batchItems.value = uris.mapIndexed { i, _ -> BatchItem(i, "ไฟล์ที่ ${i + 1}", BatchState.WAITING) }
+        val provider = resolveProvider(settingsRepository.settings.value)
+
+        viewModelScope.launch {
+            _isImportBusy.value = true
+            try {
+                val app = getApplication<Application>()
+                for ((i, uri) in uris.withIndex()) {
+                    updateBatch(i) { it.copy(state = BatchState.READING) }
+                    val file = try {
+                        FileImporter.read(app, uri)
+                    } catch (e: Exception) {
+                        updateBatch(i) { it.copy(state = BatchState.FAILED, message = e.localizedMessage ?: "เปิดไฟล์ไม่ได้") }
+                        continue
+                    }
+                    updateBatch(i) { it.copy(fileName = file.fileName) }
+
+                    when (file.kind) {
+                        FileKind.IMAGE, FileKind.PDF -> {
+                            if (provider == null) {
+                                updateBatch(i) { it.copy(state = BatchState.FAILED, message = "ยังไม่ได้ใส่ API key (แท็บ \"ตั้งค่า\")") }
+                                continue
+                            }
+                            readBatchDocument(file, provider).fold(
+                                onSuccess = { id ->
+                                    updateBatch(i) { it.copy(state = BatchState.DOCUMENT, documentId = id) }
+                                },
+                                onFailure = { e ->
+                                    updateBatch(i) { it.copy(state = BatchState.FAILED, message = e.localizedMessage ?: "อ่านไม่สำเร็จ") }
+                                }
+                            )
+                        }
+                        FileKind.CSV, FileKind.XLSX, FileKind.HTML_TABLE -> {
+                            try {
+                                val table = withContext(Dispatchers.Default) { FileImporter.parseTable(file) }
+                                if (table.headers.isEmpty()) throw IllegalArgumentException("ไฟล์ว่าง")
+                                val path = repository.saveFile(file.bytes, file.extension)
+                                val id = importedFileDao.insert(
+                                    ImportedFileEntity(
+                                        kind = ImportKind.TABLE.code,
+                                        fileName = file.fileName,
+                                        mimeType = file.mimeType,
+                                        storedPath = path,
+                                        reportType = null,
+                                        reportDate = null,
+                                        extractedJson = null,
+                                        rowCount = table.rows.size,
+                                        targetSheet = file.fileName.substringBeforeLast('.')
+                                            .replace(Regex("[^\\p{L}\\p{N}_ -]"), "_").take(60).ifBlank { "Import" },
+                                        status = ImportStatus.SAVED.code,
+                                        errorMessage = null,
+                                        sheetSyncedAt = null
+                                    )
+                                )
+                                val sheets = sendImportToSheets(id)
+                                updateBatch(i) {
+                                    it.copy(state = BatchState.TABLE, message = "${table.rows.size} แถว — ไม่นับในยอด$sheets")
+                                }
+                            } catch (e: Exception) {
+                                updateBatch(i) { it.copy(state = BatchState.FAILED, message = e.localizedMessage ?: "อ่านตารางไม่ได้") }
+                            }
+                        }
+                        FileKind.UNSUPPORTED -> updateBatch(i) {
+                            it.copy(state = BatchState.SKIPPED, message = "ไม่รองรับไฟล์ประเภทนี้")
+                        }
+                    }
+                }
+                val items = _batchItems.value
+                val docs = items.count { it.state == BatchState.DOCUMENT }
+                val failed = items.count { it.state == BatchState.FAILED }
+                _importMessage.value = (if (failed > 0) "✕ " else "✓ ") +
+                    "อ่านเสร็จ ${items.size} ไฟล์ — เอกสารบัญชี $docs ใบรอยืนยัน" +
+                    (if (failed > 0) ", ไม่สำเร็จ $failed ไฟล์" else "") +
+                    (if (docs > 0) " • ต้องกด \"ยืนยัน\" ก่อน ยอดจึงจะขึ้นในแดชบอร์ด" else "")
+            } finally {
+                _isImportBusy.value = false
+            }
+        }
+    }
+
+    /** AI-reads one slip/receipt file and saves it as PENDING with its original file. Returns the record id. */
+    private suspend fun readBatchDocument(
+        file: PickedFile,
+        provider: Triple<OcrService, String, String>
+    ): Result<Long> = runCatching {
+        val app = getApplication<Application>()
+        val (service, key, model) = provider
+        val evidence: Bitmap
+        val input: DocumentInput
+        if (file.kind == FileKind.PDF) {
+            evidence = FileImporter.renderPdfFirstPage(app, file.bytes).first ?: placeholderBitmap()
+            input = DocumentInput.Pdf(file.bytes)
+        } else {
+            evidence = withContext(Dispatchers.Default) { FileImporter.decodeImage(file.bytes) }
+                ?: throw IllegalArgumentException("เปิดรูปภาพไม่ได้")
+            input = DocumentInput.Image(evidence)
+        }
+        val (doc, raw) = service.extract(input, key, model).getOrThrow()
+        val imagePath = repository.saveImage(evidence)
+        val sourcePath = if (file.kind == FileKind.PDF) repository.saveFile(file.bytes, file.extension) else null
+        repository.savePendingDocument(doc, raw, imagePath, sourcePath)
+    }
+
+    /** Problems shown next to a batch document (missing data or a possible duplicate). */
+    fun batchDocumentNote(entity: ExtractedDocumentEntity, all: List<ExtractedDocumentEntity>): String? {
+        val problem = entity.quickVerifyProblem()
+        val dup = all.firstOrNull { entity.looksLikeDuplicateOf(it) }
+        return listOfNotNull(
+            problem?.let { "ต้องตรวจเอง: $it" },
+            dup?.let { "อาจซ้ำกับเอกสาร #${it.id}" + (it.documentNo?.let { n -> " ($n)" } ?: "") }
+        ).joinToString(" • ").ifEmpty { null }
+    }
+
+    /**
+     * Approves many PENDING documents at once so they count in the totals.
+     * Only documents with complete data (same rules as the review form) are approved;
+     * the rest are left PENDING for a person to open and fix.
+     */
+    fun verifyDocuments(ids: List<Long>) {
+        if (ids.isEmpty() || _isImportBusy.value) return
+        viewModelScope.launch {
+            _isImportBusy.value = true
+            var ok = 0
+            var skipped = 0
+            var sheetError: String? = null
+            try {
+                val settings = settingsRepository.settings.value
+                for (id in ids) {
+                    val entity = repository.getDocumentById(id)
+                    if (entity == null || entity.quickVerifyProblem() != null) {
+                        skipped++
+                        continue
+                    }
+                    val tx = TransactionType.fromCode(entity.transactionType)!!.code
+                    repository.verifyDocument(id, entity.toAccountingDocument().copy(transactionType = tx))
+                    ok++
+                    if (settings.sheetsEnabled && settings.sheetsAutoSync) {
+                        syncDocumentToSheets(id)?.let { sheetError = it }
+                    }
+                }
+                _importMessage.value = "✓ ยืนยันแล้ว $ok เอกสาร — นับเข้ายอดแดชบอร์ดแล้ว" +
+                    (if (skipped > 0) " • ข้าม $skipped เอกสารที่ข้อมูลไม่ครบ (กด \"ตรวจ\" เพื่อแก้)" else "") +
+                    (sheetError?.let { " • ส่ง Google Sheets ไม่สำเร็จบางรายการ: $it" } ?: "")
+            } catch (e: Exception) {
+                Log.e(TAG, "Bulk verify failed", e)
+                _importMessage.value = "✕ ยืนยันไม่สำเร็จ: ${e.localizedMessage ?: "Unknown"} (ยืนยันไปแล้ว $ok เอกสาร)"
+            } finally {
+                _isImportBusy.value = false
+            }
+        }
     }
 
     companion object {

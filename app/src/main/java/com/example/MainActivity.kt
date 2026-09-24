@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
 
     /** File shared/opened from another app (e.g. Gmail attachment), waiting to be imported. */
     private val sharedUri = mutableStateOf<Uri?>(null)
+    private val sharedUris = mutableStateOf<List<Uri>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,7 +64,9 @@ class MainActivity : ComponentActivity() {
                 MainAppScreen(
                     viewModel = viewModel,
                     sharedUri = sharedUri.value,
-                    onSharedUriHandled = { sharedUri.value = null }
+                    onSharedUriHandled = { sharedUri.value = null },
+                    sharedUris = sharedUris.value,
+                    onSharedUrisHandled = { sharedUris.value = emptyList() }
                 )
             }
         }
@@ -82,6 +85,10 @@ class MainActivity : ComponentActivity() {
             else -> null
         }
         if (uri != null) sharedUri.value = uri
+        if (intent?.action == Intent.ACTION_SEND_MULTIPLE) {
+            val uris = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            if (!uris.isNullOrEmpty()) sharedUris.value = uris.toList()
+        }
     }
 }
 
@@ -90,7 +97,9 @@ class MainActivity : ComponentActivity() {
 fun MainAppScreen(
     viewModel: AccountantViewModel,
     sharedUri: Uri? = null,
-    onSharedUriHandled: () -> Unit = {}
+    onSharedUriHandled: () -> Unit = {},
+    sharedUris: List<Uri> = emptyList(),
+    onSharedUrisHandled: () -> Unit = {}
 ) {
     var currentTab by remember { mutableIntStateOf(0) }
 
@@ -100,6 +109,14 @@ fun MainAppScreen(
             viewModel.onFilePicked(sharedUri)
             currentTab = 3
             onSharedUriHandled()
+        }
+    }
+    // Several files shared at once (e.g. many attachments selected in Files / Gmail).
+    LaunchedEffect(sharedUris) {
+        if (sharedUris.isNotEmpty()) {
+            viewModel.onFilesPicked(sharedUris)
+            currentTab = 3
+            onSharedUrisHandled()
         }
     }
 
