@@ -446,7 +446,51 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                 return s.keys().asSequence().map { k -> k to s.opt(k).toString() }.toList()
             }
         val rowCount: Int get() = json.optJSONArray("rows")?.length() ?: 0
+
+        /** Summary values that are numbers (for the "amount to count" quick-pick). */
+        val numericSummary: List<Pair<String, Double>>
+            get() {
+                val s = json.optJSONObject("summary") ?: return emptyList()
+                return s.keys().asSequence().mapNotNull { k ->
+                    val v = s.opt(k)
+                    val d = when (v) {
+                        is Number -> v.toDouble()
+                        else -> v?.toString()?.replace(",", "")?.trim()?.toDoubleOrNull()
+                    }
+                    if (d == null || d.isNaN() || isNonMoneyKey(k)) null else k to d
+                }.toList()
+            }
+
+        /** Expense-type reports (vouchers, purchases, payouts) count as EXPENSE, the rest as INCOME. */
+        val suggestedTransaction: TransactionType
+            get() {
+                val t = (reportType + " " + title).lowercase()
+                return if (EXPENSE_WORDS.any { it in t }) TransactionType.EXPENSE else TransactionType.INCOME
+            }
+
+        /** Best summary value for the chosen direction, e.g. total_revenue for income. */
+        fun suggestedAmount(tx: TransactionType): Double? {
+            val values = numericSummary.toMap()
+            val keys = if (tx == TransactionType.INCOME) INCOME_KEYS else EXPENSE_KEYS
+            return keys.firstNotNullOfOrNull { values[it] }
+        }
+
+        companion object {
+            private val EXPENSE_WORDS = listOf("expense", "voucher", "purchase", "payout", "paid_out", "รายจ่าย", "ค่าใช้จ่าย")
+            private val INCOME_KEYS = listOf(
+                "total_revenue", "net_revenue", "gross_revenue", "daily_revenue", "total_income", "total_sales",
+                "total_payments", "total_collection", "room_revenue", "revenue"
+            )
+            private val EXPENSE_KEYS = listOf(
+                "total_expense", "total_expenses", "expense_total", "total_paid", "total_payout", "total_amount", "total"
+            )
+            private val NON_MONEY_WORDS = listOf("percent", "occupancy", "rooms", "nights", "guests", "pax", "count", "adr", "revpar")
+            fun isNonMoneyKey(key: String): Boolean = NON_MONEY_WORDS.any { it in key.lowercase() }
+        }
     }
+
+    /** documentNo used for the accounting row created from imported report [importId]. */
+    private fun reportDocumentNo(importId: Long) = "$REPORT_DOC_PREFIX$importId"
 
     val importedFiles: StateFlow<List<ImportedFileEntity>> = importedFileDao.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -565,9 +609,17 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /** Saves the eZee report (original file + AI summary) and sends it to Google Sheets if set up. */
-    fun saveReport() {
+    /**
+     * @param countAs  INCOME / EXPENSE to add [amount] to the dashboard totals, or null to only keep the report.
+     *                 The person sees the numbers on screen before pressing save, so the row is saved VERIFIED.
+     */
+    fun saveReport(countAs: TransactionType? = null, amount: Double? = null) {
         val pending = _pendingImport.value ?: return
         val report = _reportPreview.value ?: return
+        if (countAs != null && (amount == null || amount.isNaN() || amount <= 0.0)) {
+            _importMessage.value = "✕ ใส่ยอดเงินที่จะนับเข้ายอดให้ถูกต้องก่อน (มากกว่า 0)"
+            return
+        }
         viewModelScope.launch {
             _isImportBusy.value = true
             try {
@@ -588,8 +640,30 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                         sheetSyncedAt = null
                     )
                 )
+                var counted = " (ไม่นับรวมในยอด)"
+                if (countAs != null && amount != null) {
+                    val docId = repository.saveVerifiedDocument(
+                        AccountingDocumentJson(
+                            documentType = "OTHER",
+                            transactionType = countAs.code,
+                            documentNo = reportDocumentNo(id),
+                            date = report.reportDate,
+                            sellerName = if (countAs == TransactionType.EXPENSE) report.title else null,
+                            customerName = if (countAs == TransactionType.INCOME) report.title else null,
+                            totalAmount = amount,
+                            paymentMethod = null,
+                            lineItems = emptyList()
+                        ),
+                        rawJson = report.raw,
+                        // The original file belongs to the imported report (deleting this row must not delete it).
+                        sourceFilePath = null
+                    )
+                    counted = " — นับเป็น${countAs.titleTh} ${String.format("%,.2f ฿", amount)} แล้ว"
+                    val settings = settingsRepository.settings.value
+                    if (settings.sheetsEnabled && settings.sheetsAutoSync) syncDocumentToSheets(docId)
+                }
                 clearPendingImport()
-                _importMessage.value = "✓ บันทึกรายงานแล้ว (รายงาน eZee ไม่ถูกนับรวมในยอดแดชบอร์ด)" + sendImportToSheets(id)
+                _importMessage.value = "✓ บันทึกรายงานแล้ว$counted" + sendImportToSheets(id)
             } catch (e: Exception) {
                 Log.e(TAG, "Save report failed", e)
                 _importMessage.value = "✕ บันทึกไม่สำเร็จ: ${e.localizedMessage}"
@@ -646,6 +720,10 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     fun deleteImport(id: Long) {
         viewModelScope.launch {
             val entity = importedFileDao.getById(id) ?: return@launch
+            // A report that was counted in the totals: remove its accounting row too.
+            val counted = repository.getByDocumentNo(reportDocumentNo(id))
+            counted.forEach { repository.deleteRowOnly(it.id) }
+            if (counted.isNotEmpty()) _importMessage.value = "✓ ลบรายงานและยอดที่นับไว้ในแดชบอร์ดแล้ว"
             importedFileDao.deleteById(id)
             DocumentImageStore(getApplication<Application>()).delete(entity.storedPath)
         }
@@ -904,5 +982,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
 
     companion object {
         private const val TAG = "AccountantViewModel"
+        /** documentNo prefix of accounting rows created from an imported eZee report. */
+        const val REPORT_DOC_PREFIX = "eZee RPT-"
     }
 }

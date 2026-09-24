@@ -6,6 +6,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +32,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -56,6 +60,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -150,7 +156,7 @@ fun ImportScreen(
                     Text("เลือกไฟล์ (ได้หลายไฟล์)")
                 }
                 Text(
-                    "ยอดในแดชบอร์ดนับเฉพาะสลิป/ใบเสร็จที่กด \"ยืนยัน\" แล้ว — รายงาน eZee และตาราง CSV/Excel เก็บไว้ดู/ส่ง Google Sheets แต่ไม่นับรวมในยอด",
+                    "ยอดในแดชบอร์ดนับเฉพาะสลิป/ใบเสร็จที่กด \"ยืนยัน\" แล้ว และรายงาน eZee ที่เลือก \"นับเข้ายอด\" ตอนบันทึก — ตาราง CSV/Excel ไม่นับรวมในยอด",
                     fontSize = 11.sp,
                     color = Color(0xFFE65100)
                 )
@@ -307,16 +313,14 @@ fun ImportScreen(
                             fontSize = 11.sp,
                             color = Color(0xFFE65100)
                         )
-                        Button(
-                            onClick = { viewModel.saveReport() },
-                            enabled = !busy,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("save_report_button"),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text(if (settings.sheetsEnabled) "บันทึก & ส่งไป Google Sheets" else "บันทึกในเครื่อง")
-                        }
+                        ReportCountingSection(
+                            report = r,
+                            reportKey = p.file.fileName,
+                            allDocuments = allDocuments,
+                            busy = busy,
+                            sheetsEnabled = settings.sheetsEnabled,
+                            onSave = { tx, amount -> viewModel.saveReport(tx, amount) }
+                        )
                     }
                 }
             }
@@ -326,9 +330,14 @@ fun ImportScreen(
         if (imported.isEmpty()) {
             Text("ยังไม่มี", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        val countedReports = remember(allDocuments) {
+            allDocuments.filter { it.documentNo?.startsWith(AccountantViewModel.REPORT_DOC_PREFIX) == true }
+                .associateBy { it.documentNo }
+        }
         imported.forEach { item ->
             ImportedFileRow(
                 item = item,
+                counted = countedReports[AccountantViewModel.REPORT_DOC_PREFIX + item.id],
                 canResend = settings.sheetsEnabled,
                 busy = busy,
                 onResend = { viewModel.resendImport(item.id) },
@@ -394,6 +403,7 @@ private fun TablePreview(headers: List<String>, rows: List<List<String>>) {
 @Composable
 private fun ImportedFileRow(
     item: ImportedFileEntity,
+    counted: ExtractedDocumentEntity?,
     canResend: Boolean,
     busy: Boolean,
     onResend: () -> Unit,
@@ -428,6 +438,17 @@ private fun ImportedFileRow(
                         ImportStatus.SAVED -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
+                if (kind == ImportKind.EZEE_REPORT) {
+                    Text(
+                        counted?.let {
+                            "นับในยอด: ${TransactionType.fromCode(it.transactionType)?.titleTh ?: ""} " +
+                                String.format("%,.2f ฿", it.totalAmount ?: 0.0)
+                        } ?: "ไม่นับในยอด",
+                        fontSize = 11.sp,
+                        fontWeight = if (counted != null) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (counted != null) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 item.errorMessage?.takeIf { status == ImportStatus.SYNC_FAILED }?.let {
                     Text(it, fontSize = 10.sp, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -576,6 +597,115 @@ private fun BatchResultCard(
                 }) { Text("ยืนยันทั้งหมด") }
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("ยกเลิก") } }
+        )
+    }
+}
+
+/**
+ * Lets the person choose whether an eZee report is added to the dashboard totals,
+ * as income or expense, and which amount (pre-filled from the report summary).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReportCountingSection(
+    report: AccountantViewModel.ReportPreview,
+    reportKey: String,
+    allDocuments: List<ExtractedDocumentEntity>,
+    busy: Boolean,
+    sheetsEnabled: Boolean,
+    onSave: (TransactionType?, Double?) -> Unit
+) {
+    val initialTx = remember(reportKey) { report.suggestedTransaction }
+    var countIt by rememberSaveable(reportKey) { mutableStateOf(true) }
+    var tx by rememberSaveable(reportKey) { mutableStateOf(initialTx.code) }
+    val txType = TransactionType.fromCode(tx) ?: TransactionType.INCOME
+    var amountText by rememberSaveable(reportKey) {
+        mutableStateOf(report.suggestedAmount(initialTx)?.let { String.format(Locale.US, "%.2f", it) } ?: "")
+    }
+    val amount = amountText.replace(",", "").trim().toDoubleOrNull()
+    val amountOk = amount != null && amount > 0.0
+
+    // Another report with the same date and direction already counted -> probably counted twice.
+    val sameDay = remember(allDocuments, report.reportDate, tx) {
+        report.reportDate?.let { d ->
+            allDocuments.filter {
+                it.documentNo?.startsWith(AccountantViewModel.REPORT_DOC_PREFIX) == true &&
+                    it.date == d && it.transactionType == tx && it.documentStatus() == DocumentStatus.VERIFIED
+            }
+        } ?: emptyList()
+    }
+
+    HorizontalDivider()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = countIt, onCheckedChange = { countIt = it }, modifier = Modifier.testTag("report_count_checkbox"))
+        Text("นับเข้ายอดแดชบอร์ด", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
+    if (countIt) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TransactionType.entries.forEach { t ->
+                FilterChip(
+                    selected = tx == t.code,
+                    onClick = {
+                        tx = t.code
+                        report.suggestedAmount(t)?.let { amountText = String.format(Locale.US, "%.2f", it) }
+                    },
+                    label = { Text(t.titleTh) }
+                )
+            }
+        }
+        OutlinedTextField(
+            value = amountText,
+            onValueChange = { amountText = it },
+            label = { Text("ยอดที่จะนับเป็น${txType.titleTh} (บาท)") },
+            singleLine = true,
+            isError = !amountOk,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("report_amount_field")
+        )
+        val picks = report.numericSummary.filter { it.second > 0 }
+        if (picks.isNotEmpty()) {
+            Text("แตะเพื่อใช้ตัวเลขจากรายงาน:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                picks.forEach { (k, v) ->
+                    FilterChip(
+                        selected = amount != null && kotlin.math.abs(amount - v) < 0.005,
+                        onClick = { amountText = String.format(Locale.US, "%.2f", v) },
+                        label = { Text("$k ${String.format("%,.2f", v)}", fontSize = 11.sp) }
+                    )
+                }
+            }
+        }
+        if (report.reportDate == null) {
+            Text("รายงานนี้ไม่มีวันที่ — ยอดจะนับรวมแต่ไม่มีวันที่กำกับ", fontSize = 11.sp, color = Color(0xFFE65100))
+        }
+        if (sameDay.isNotEmpty()) {
+            Text(
+                "มีรายงานวันที่ ${report.reportDate} ที่นับเป็น${txType.titleTh}ไว้แล้ว " +
+                    "(${String.format("%,.2f ฿", sameDay.sumOf { it.totalAmount ?: 0.0 })}) — ระวังนับซ้ำ",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        Text(
+            "ถ้าสแกนใบเสร็จ/สลิปของรายการเดียวกันไว้แล้ว ยอดจะซ้ำ — เลือกนับจากรายงานหรือจากใบเสร็จอย่างใดอย่างหนึ่ง",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+    Button(
+        onClick = { if (countIt) onSave(txType, amount) else onSave(null, null) },
+        enabled = !busy && (!countIt || amountOk),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("save_report_button"),
+        shape = RoundedCornerShape(10.dp),
+        colors = if (countIt) ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)) else ButtonDefaults.buttonColors()
+    ) {
+        Text(
+            (if (countIt && amountOk) "บันทึก & นับเป็น${txType.titleTh} ${String.format("%,.2f ฿", amount)}" else "บันทึก") +
+                (if (sheetsEnabled) " + ส่ง Sheets" else "")
         )
     }
 }

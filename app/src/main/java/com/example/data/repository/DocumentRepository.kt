@@ -36,6 +36,23 @@ class DocumentRepository(
         return documentDao.insertDocument(entity)
     }
 
+    /**
+     * Saves a document that a person has already checked on screen (e.g. the totals of an eZee report)
+     * directly as VERIFIED, so it counts in the totals right away.
+     */
+    suspend fun saveVerifiedDocument(document: AccountingDocumentJson, rawJson: String, sourceFilePath: String?): Long {
+        val now = System.currentTimeMillis()
+        val entity = ExtractedDocumentEntity.fromModel(
+            document, rawJson, sampleId = null, imagePath = null, sourceFilePath = sourceFilePath
+        ).copy(status = DocumentStatus.VERIFIED.code, verifiedAt = now, updatedAt = now)
+        return documentDao.insertDocument(entity)
+    }
+
+    suspend fun getByDocumentNo(documentNo: String): List<ExtractedDocumentEntity> = documentDao.getByDocumentNo(documentNo)
+
+    /** Deletes only the database row (the stored file may be shared with an imported report). */
+    suspend fun deleteRowOnly(id: Long) = documentDao.deleteById(id)
+
     /** Stores the person-checked values and marks the document VERIFIED. rawJson (AI output) is kept. */
     suspend fun verifyDocument(id: Long, reviewed: AccountingDocumentJson) {
         val current = documentDao.getDocumentById(id) ?: return

@@ -5,6 +5,9 @@ import com.example.data.local.looksLikeDuplicateOf
 import com.example.data.local.quickVerifyProblem
 import com.example.data.model.DocumentStatus
 import com.example.data.network.OcrCommon
+import com.example.data.model.TransactionType
+import com.example.ui.viewmodel.AccountantViewModel
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -63,5 +66,23 @@ class BatchImportRulesTest {
         )
         assertEquals(1250.0, parsed.totalAmount!!, 0.001)
         assertEquals(81.78, parsed.vatAmount!!, 0.001)
+    }
+
+    @Test
+    fun `eZee report suggests income or expense and the amount to count`() {
+        val revenue = AccountantViewModel.ReportPreview(
+            JSONObject("""{"report_type":"night_audit","summary":{"occupancy_percent":80,"room_revenue":9000,"total_revenue":"12,500"}}"""),
+            "{}"
+        )
+        assertEquals(TransactionType.INCOME, revenue.suggestedTransaction)
+        assertEquals(12500.0, revenue.suggestedAmount(TransactionType.INCOME)!!, 0.001)
+        assertFalse(revenue.numericSummary.any { it.first == "occupancy_percent" })
+
+        val expense = AccountantViewModel.ReportPreview(
+            JSONObject("""{"report_type":"expense_voucher","summary":{"total_expense":3200.5}}"""),
+            "{}"
+        )
+        assertEquals(TransactionType.EXPENSE, expense.suggestedTransaction)
+        assertEquals(3200.5, expense.suggestedAmount(TransactionType.EXPENSE)!!, 0.001)
     }
 }

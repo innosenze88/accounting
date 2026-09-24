@@ -24,6 +24,9 @@ interface DocumentDao {
     @Query("SELECT * FROM extracted_documents WHERE transactionType = :type ORDER BY createdAt DESC")
     fun getDocumentsByTransaction(type: String): Flow<List<ExtractedDocumentEntity>>
 
+    @Query("SELECT * FROM extracted_documents WHERE documentNo = :documentNo")
+    suspend fun getByDocumentNo(documentNo: String): List<ExtractedDocumentEntity>
+
     @Query("SELECT imagePath FROM extracted_documents WHERE imagePath IS NOT NULL")
     suspend fun getAllImagePaths(): List<String>
 
