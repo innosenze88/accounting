@@ -21,6 +21,8 @@ data class AiSettings(
     val geminiModel: String = DEFAULT_GEMINI_MODEL,
     val claudeApiKey: String = "",
     val claudeModel: String = DEFAULT_CLAUDE_MODEL,
+    /** Console workspace ID (wrkspc_...). Needed only for keys not scoped to one workspace. */
+    val claudeWorkspaceId: String = "",
     /** Google Apps Script Web App URL (ends with /exec). Empty = Google Sheets off. */
     val sheetsWebAppUrl: String = "",
     /** Shared secret that must match TOKEN in the Apps Script code. */
@@ -70,6 +72,7 @@ class AiSettingsRepository(context: Context) {
         geminiModel = prefs.getString(KEY_GEMINI_MODEL, AiSettings.DEFAULT_GEMINI_MODEL) ?: AiSettings.DEFAULT_GEMINI_MODEL,
         claudeApiKey = prefs.getString(KEY_CLAUDE_KEY, "") ?: "",
         claudeModel = prefs.getString(KEY_CLAUDE_MODEL, AiSettings.DEFAULT_CLAUDE_MODEL) ?: AiSettings.DEFAULT_CLAUDE_MODEL,
+        claudeWorkspaceId = prefs.getString(KEY_CLAUDE_WORKSPACE, "") ?: "",
         sheetsWebAppUrl = prefs.getString(KEY_SHEETS_URL, "") ?: "",
         sheetsToken = prefs.getString(KEY_SHEETS_TOKEN, null) ?: newToken().also {
             prefs.edit().putString(KEY_SHEETS_TOKEN, it).apply()
@@ -81,8 +84,9 @@ class AiSettingsRepository(context: Context) {
         val clean = settings.copy(
             geminiApiKey = settings.geminiApiKey.trim(),
             geminiModel = settings.geminiModel.trim(),
-            claudeApiKey = settings.claudeApiKey.trim(),
+            claudeApiKey = settings.claudeApiKey.filterNot { it.isWhitespace() },
             claudeModel = settings.claudeModel.trim(),
+            claudeWorkspaceId = settings.claudeWorkspaceId.trim(),
             sheetsWebAppUrl = settings.sheetsWebAppUrl.trim(),
             sheetsToken = settings.sheetsToken.trim()
         )
@@ -92,6 +96,7 @@ class AiSettingsRepository(context: Context) {
             .putString(KEY_GEMINI_MODEL, clean.geminiModel)
             .putString(KEY_CLAUDE_KEY, clean.claudeApiKey)
             .putString(KEY_CLAUDE_MODEL, clean.claudeModel)
+            .putString(KEY_CLAUDE_WORKSPACE, clean.claudeWorkspaceId)
             .putString(KEY_SHEETS_URL, clean.sheetsWebAppUrl)
             .putString(KEY_SHEETS_TOKEN, clean.sheetsToken)
             .putBoolean(KEY_SHEETS_AUTO, clean.sheetsAutoSync)
@@ -106,6 +111,7 @@ class AiSettingsRepository(context: Context) {
         private const val KEY_GEMINI_MODEL = "gemini_model"
         private const val KEY_CLAUDE_KEY = "claude_api_key"
         private const val KEY_CLAUDE_MODEL = "claude_model"
+        private const val KEY_CLAUDE_WORKSPACE = "claude_workspace_id"
         private const val KEY_SHEETS_URL = "sheets_web_app_url"
         private const val KEY_SHEETS_TOKEN = "sheets_token"
         private const val KEY_SHEETS_AUTO = "sheets_auto_sync"

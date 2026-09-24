@@ -115,13 +115,15 @@ fun SettingsScreen(
             )
             AiProvider.CLAUDE -> ProviderCard(
                 title = "Anthropic Claude",
-                keyHint = "ขอ key ได้ที่ console.anthropic.com → API Keys (ขึ้นต้นด้วย sk-ant-)",
+                keyHint = "ขอ key ได้ที่ platform.claude.com → Settings → API keys (ขึ้นต้นด้วย sk-ant-api)",
                 apiKey = draft.claudeApiKey,
                 onApiKeyChange = { draft = draft.copy(claudeApiKey = it); savedNotice = false },
                 model = draft.claudeModel,
                 onModelChange = { draft = draft.copy(claudeModel = it); savedNotice = false },
                 suggestions = AiSettings.CLAUDE_MODEL_SUGGESTIONS,
-                extraNote = null
+                extraNote = "ถ้า key ผูกหลาย workspace ต้องใส่ Workspace ID ด้านล่างด้วย",
+                workspaceId = draft.claudeWorkspaceId,
+                onWorkspaceIdChange = { draft = draft.copy(claudeWorkspaceId = it); savedNotice = false }
             )
         }
 
@@ -302,7 +304,9 @@ private fun ProviderCard(
     model: String,
     onModelChange: (String) -> Unit,
     suggestions: List<String>,
-    extraNote: String?
+    extraNote: String?,
+    workspaceId: String? = null,
+    onWorkspaceIdChange: ((String) -> Unit)? = null
 ) {
     var showKey by remember { mutableStateOf(false) }
 
@@ -336,6 +340,24 @@ private fun ProviderCard(
             )
             Text(keyHint, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             extraNote?.let { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+
+            if (workspaceId != null && onWorkspaceIdChange != null) {
+                OutlinedTextField(
+                    value = workspaceId,
+                    onValueChange = onWorkspaceIdChange,
+                    label = { Text("Workspace ID (ถ้ามี)") },
+                    placeholder = { Text("wrkspc_...") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_workspace_id")
+                )
+                Text(
+                    "ดูได้ที่ platform.claude.com → Settings → Workspaces (เว้นว่างได้ถ้า key ผูก workspace เดียว)",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             OutlinedTextField(
                 value = model,

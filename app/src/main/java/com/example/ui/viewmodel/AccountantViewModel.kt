@@ -54,7 +54,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     private val sheetsClient = SheetsClient()
     private val settingsRepository = AiSettingsRepository(application)
     private val geminiService = GeminiOcrService()
-    private val claudeService = ClaudeOcrService()
+    private val claudeService = ClaudeOcrService { settingsRepository.settings.value.claudeWorkspaceId }
 
     init {
         val db = AppDatabase.getInstance(application)

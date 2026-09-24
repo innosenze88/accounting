@@ -10,8 +10,16 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Anthropic Claude (Messages API) document reader. */
-class ClaudeOcrService : OcrService {
+/**
+ * Anthropic Claude (Messages API) document reader.
+ *
+ * [workspaceId] returns the Console workspace ID (wrkspc_...). It is required when the API key
+ * is an identity-linked key that is not scoped to a single workspace; otherwise the API answers
+ * 400 "anthropic-workspace-id is required ...". Empty = header not sent.
+ */
+class ClaudeOcrService(
+    private val workspaceId: () -> String = { "" }
+) : OcrService {
 
     companion object {
         private const val TAG = "ClaudeOcrService"
@@ -94,10 +102,15 @@ class ClaudeOcrService : OcrService {
 
     /** Sends a Messages API request and returns the joined text blocks (thinking blocks are skipped). */
     private fun send(apiKey: String, body: JSONObject): String {
-        val request = Request.Builder()
+        val cleanKey = apiKey.filterNot { it.isWhitespace() }
+        val builder = Request.Builder()
             .url(URL)
-            .header("x-api-key", apiKey)
+            .header("Authorization", "Bearer $cleanKey")
             .header("anthropic-version", API_VERSION)
+        workspaceId().trim().takeIf { it.isNotEmpty() }?.let {
+            builder.header("anthropic-workspace-id", it)
+        }
+        val request = builder
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
 

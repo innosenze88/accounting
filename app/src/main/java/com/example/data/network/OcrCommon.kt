@@ -212,7 +212,14 @@ Never invent values. Use null when something is not in the report."""
         } catch (e: Exception) {
             null
         }
-        val hint = when (code) {
+        val lower = message?.lowercase() ?: ""
+        val hint = when {
+            code == 400 && "anthropic-workspace-id" in lower ->
+                "key นี้ใช้ได้หลาย workspace ต้องใส่ Workspace ID (wrkspc_...) ในหน้าตั้งค่า"
+            code == 400 && "credit balance" in lower ->
+                "เครดิตในบัญชี Console หมด ต้องเติมเงินที่ Plans & Billing"
+            else -> null
+        } ?: when (code) {
             400 -> "คำขอไม่ถูกต้อง หรือชื่อโมเดลผิด"
             401, 403 -> "API key ไม่ถูกต้องหรือไม่มีสิทธิ์"
             404 -> "ไม่พบโมเดลนี้ ตรวจชื่อโมเดลในหน้าตั้งค่า"
