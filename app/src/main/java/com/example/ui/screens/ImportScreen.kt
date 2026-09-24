@@ -78,6 +78,8 @@ import com.example.ui.components.RulesGuideContent
 import com.example.ui.viewmodel.AccountantViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
+import com.example.ui.components.TemplateBuilderDialog
+import com.example.ui.components.TemplateListCard
 import java.util.Locale
 
 /** MIME types offered in the file picker. */
@@ -106,6 +108,8 @@ fun ImportScreen(
     val settings by viewModel.aiSettings.collectAsStateWithLifecycle()
     val batch by viewModel.batchItems.collectAsStateWithLifecycle()
     val allDocuments by viewModel.historyList.collectAsStateWithLifecycle()
+    val templates by viewModel.reportTemplates.collectAsStateWithLifecycle()
+    val builder by viewModel.builder.collectAsStateWithLifecycle()
     var showRules by rememberSaveable { mutableStateOf(false) }
 
     // Several files can be selected at once (long-press to select more in the file picker).
@@ -288,6 +292,16 @@ fun ImportScreen(
                                 .testTag("import_as_report_button"),
                             shape = RoundedCornerShape(10.dp)
                         ) { Text("รายงาน eZee → อ่านสรุปตัวเลข") }
+                        if (p.file.kind == FileKind.PDF) {
+                            OutlinedButton(
+                                onClick = { viewModel.openTemplateBuilder() },
+                                enabled = !busy,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("open_template_builder_button"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) { Text("รายงานแบบใหม่ → สร้างตัวอ่านเฉพาะจากไฟล์นี้") }
+                        }
                     }
 
                     report?.let { r ->
@@ -298,21 +312,57 @@ fun ImportScreen(
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (r.readLocally) {
+                            Text(
+                                if (r.readByTemplate) "✓ อ่านด้วยตัวอ่านที่สร้างเอง \"${r.title}\" — ไม่ใช้ AI"
+                                else "✓ อ่านด้วยตัวอ่าน eZee ในเครื่อง — ตัวเลขตรงตามไฟล์ ไม่ใช้ AI",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32),
+                                modifier = Modifier.testTag("report_read_locally")
+                            )
+                        }
                         if (r.summary.isEmpty()) {
                             Text("ไม่พบตัวเลขสรุปในรายงาน", fontSize = 12.sp)
                         } else {
                             r.summary.forEach { (k, v) ->
                                 Row(Modifier.fillMaxWidth()) {
-                                    Text(k, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                                    Text(v, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                    Text(r.labelFor(k), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                    Text(
+                                        v.toDoubleOrNull()?.let { d ->
+                                            val whole = d == Math.floor(d)
+                                            val fmt = if (whole && AccountantViewModel.ReportPreview.isNonMoneyKey(k)) "%,.0f" else "%,.2f"
+                                            String.format(Locale.US, fmt, d)
+                                        } ?: v,
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
-                        Text(
-                            "ตรวจตัวเลขกับรายงานก่อนบันทึก — AI อาจอ่านผิดได้",
-                            fontSize = 11.sp,
-                            color = Color(0xFFE65100)
-                        )
+                        val checks = r.checks
+                        if (checks.isNotEmpty()) {
+                            val bad = checks.count { !it.second }
+                            Text(
+                                if (bad == 0) "✓ ตรวจยอดรวมอัตโนมัติ ${checks.size} รายการ — ตรงทั้งหมด"
+                                else "✕ ยอดรวมไม่ตรง $bad จาก ${checks.size} รายการ — ตรวจกับไฟล์ก่อนบันทึก",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (bad == 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                            )
+                            checks.filter { !it.second }.forEach { (label, _) ->
+                                Text("  • $label", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        r.notes?.let { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        if (!r.readLocally) {
+                            Text(
+                                "ตรวจตัวเลขกับรายงานก่อนบันทึก — AI อาจอ่านผิดได้",
+                                fontSize = 11.sp,
+                                color = Color(0xFFE65100)
+                            )
+                        }
                         ReportCountingSection(
                             report = r,
                             reportKey = p.file.fileName,
@@ -321,9 +371,39 @@ fun ImportScreen(
                             sheetsEnabled = settings.sheetsEnabled,
                             onSave = { tx, amount -> viewModel.saveReport(tx, amount) }
                         )
+                        if (p.file.kind == FileKind.PDF) {
+                            TextButton(
+                                onClick = { viewModel.openTemplateBuilder() },
+                                enabled = !busy,
+                                modifier = Modifier.testTag("edit_template_button")
+                            ) {
+                                Text(
+                                    if (r.readByTemplate) "แก้ตัวอ่านเฉพาะของรายงานนี้"
+                                    else "ตัวเลขไม่ครบ/ไม่ตรง? → สร้างตัวอ่านเฉพาะ",
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
                     }
                 }
             }
+        }
+
+        TemplateListCard(
+            templates = templates,
+            onDelete = { viewModel.deleteTemplate(it) },
+            exportJson = { viewModel.exportTemplates() },
+            onImport = { viewModel.importTemplates(it) }
+        )
+        builder?.let { b ->
+            TemplateBuilderDialog(
+                fileName = b.fileName,
+                pages = b.pages,
+                lines = b.lines,
+                editing = b.editing,
+                onSave = { viewModel.saveTemplate(it) },
+                onClose = { viewModel.closeTemplateBuilder() }
+            )
         }
 
         Text("ไฟล์ที่นำเข้าแล้ว (${imported.size})", fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -537,7 +617,8 @@ private fun BatchResultCard(
                                 fontSize = 12.sp,
                                 color = when (item.state) {
                                     AccountantViewModel.BatchState.FAILED -> MaterialTheme.colorScheme.error
-                                    AccountantViewModel.BatchState.TABLE -> Color(0xFF2E7D32)
+                                    AccountantViewModel.BatchState.TABLE,
+                                    AccountantViewModel.BatchState.REPORT -> Color(0xFF2E7D32)
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )
@@ -616,7 +697,7 @@ private fun ReportCountingSection(
     onSave: (TransactionType?, Double?) -> Unit
 ) {
     val initialTx = remember(reportKey) { report.suggestedTransaction }
-    var countIt by rememberSaveable(reportKey) { mutableStateOf(true) }
+    var countIt by rememberSaveable(reportKey) { mutableStateOf(report.countByDefault) }
     var tx by rememberSaveable(reportKey) { mutableStateOf(initialTx.code) }
     val txType = TransactionType.fromCode(tx) ?: TransactionType.INCOME
     var amountText by rememberSaveable(reportKey) {
@@ -672,7 +753,7 @@ private fun ReportCountingSection(
                     FilterChip(
                         selected = amount != null && kotlin.math.abs(amount - v) < 0.005,
                         onClick = { amountText = String.format(Locale.US, "%.2f", v) },
-                        label = { Text("$k ${String.format("%,.2f", v)}", fontSize = 11.sp) }
+                        label = { Text("${report.labelFor(k)} ${String.format(Locale.US, "%,.2f", v)}", fontSize = 11.sp) }
                     )
                 }
             }

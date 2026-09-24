@@ -14,6 +14,12 @@ import com.example.data.local.quickVerifyProblem
 import com.example.data.model.TransactionType
 import com.example.data.model.AccountingDocumentJson
 import com.example.data.model.DocumentStatus
+import com.example.data.ezee.EzeePdfReader
+import com.example.data.ezee.EzeeReport
+import com.example.data.ezee.LineInfo
+import com.example.data.ezee.ReportTemplate
+import com.example.data.ezee.TemplateEngine
+import com.example.data.ezee.TemplateStore
 import com.example.data.importer.FileImporter
 import com.example.data.importer.FileKind
 import com.example.data.importer.ParsedTable
@@ -55,6 +61,10 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     private val repository: DocumentRepository
     private val importedFileDao: ImportedFileDao
     private val sheetsClient = SheetsClient()
+    private val templateStore = TemplateStore(application)
+
+    /** Readers the user created for new report layouts ("ตัวอ่านที่สร้างเอง"). */
+    val reportTemplates: StateFlow<List<ReportTemplate>> = templateStore.templates
     private val settingsRepository = AiSettingsRepository(application)
     private val geminiService = GeminiOcrService()
     private val claudeService = ClaudeOcrService { settingsRepository.settings.value.claudeWorkspaceId }
@@ -437,6 +447,30 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
 
     /** AI result of reading an eZee report, shown before saving. */
     class ReportPreview(val json: JSONObject, val raw: String) {
+        /** true = read by the built-in eZee reader (numbers copied exactly from the PDF, no AI). */
+        val readLocally: Boolean
+            get() = json.optString("parser").let { it.startsWith("ezee_local") || it.startsWith(TemplateEngine.PARSER_PREFIX) }
+
+        /** true = read by a reader the user made in the app ("ตัวอ่านที่สร้างเอง"). */
+        val readByTemplate: Boolean get() = json.optString("parser").startsWith(TemplateEngine.PARSER_PREFIX)
+
+        /** Thai name for a summary key (local reader), else the key itself. */
+        fun labelFor(key: String): String = json.optJSONObject("labels")?.optString(key)?.ifBlank { null } ?: key
+
+        /** Automatic cross-checks from the local reader: label + passed. */
+        val checks: List<Pair<String, Boolean>>
+            get() {
+                val arr = json.optJSONArray("checks") ?: return emptyList()
+                return (0 until arr.length()).mapNotNull { i ->
+                    arr.optJSONObject(i)?.let { it.optString("label") to it.optBoolean("ok") }
+                }
+            }
+
+        val notes: String? get() = json.optString("notes").takeIf { it.isNotBlank() && it != "null" }
+
+        /** Reports like statistics or ledgers must not be added to the totals by default. */
+        val countByDefault: Boolean get() = if (json.has("count_by_default")) json.optBoolean("count_by_default") else true
+
         val reportType: String get() = json.optString("report_type").ifBlank { "other" }
         val title: String get() = json.optString("report_title").ifBlank { reportType }
         val reportDate: String? get() = json.optString("report_date").takeIf { it.isNotBlank() && it != "null" }
@@ -464,12 +498,19 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         /** Expense-type reports (vouchers, purchases, payouts) count as EXPENSE, the rest as INCOME. */
         val suggestedTransaction: TransactionType
             get() {
+                TransactionType.fromCode(json.optString("suggested_transaction").takeIf { it != "null" })?.let { return it }
                 val t = (reportType + " " + title).lowercase()
                 return if (EXPENSE_WORDS.any { it in t }) TransactionType.EXPENSE else TransactionType.INCOME
             }
 
         /** Best summary value for the chosen direction, e.g. total_revenue for income. */
         fun suggestedAmount(tx: TransactionType): Double? {
+            if (readLocally) {
+                // The local reader says exactly which number to count (or none, e.g. statistics).
+                val suggestedTx = TransactionType.fromCode(json.optString("suggested_transaction").takeIf { it != "null" })
+                val amount = json.optDouble("suggested_amount", Double.NaN)
+                return if (suggestedTx == tx && !amount.isNaN() && amount > 0.0) amount else null
+            }
             val values = numericSummary.toMap()
             val keys = if (tx == TransactionType.INCOME) INCOME_KEYS else EXPENSE_KEYS
             return keys.firstNotNullOfOrNull { values[it] }
@@ -484,7 +525,9 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
             private val EXPENSE_KEYS = listOf(
                 "total_expense", "total_expenses", "expense_total", "total_paid", "total_payout", "total_amount", "total"
             )
-            private val NON_MONEY_WORDS = listOf("percent", "occupancy", "rooms", "nights", "guests", "pax", "count", "adr", "revpar")
+            private val NON_MONEY_WORDS = listOf(
+                "percent", "occupancy", "rooms", "nights", "guests", "pax", "count", "adr", "revpar", "adult", "complimentary"
+            )
             fun isNonMoneyKey(key: String): Boolean = NON_MONEY_WORDS.any { it in key.lowercase() }
         }
     }
@@ -531,6 +574,11 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     FileKind.PDF -> {
                         val (preview, pages) = FileImporter.renderPdfFirstPage(app, file.bytes)
+                        // A known eZee report is shown at once (read on the phone, no AI).
+                        EzeePdfReader.read(app, file.bytes, file.fileName, templateStore.templates.value)?.let { report ->
+                            val json = EzeePdfReader.toJson(report)
+                            _reportPreview.value = ReportPreview(json, json.toString())
+                        }
                         PendingImport(file, preview, pages, null)
                     }
                     FileKind.CSV, FileKind.XLSX, FileKind.HTML_TABLE -> PendingImport(
@@ -574,9 +622,34 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     private fun placeholderBitmap(): Bitmap =
         Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.LTGRAY) }
 
-    /** Reads the pending PDF/image as an eZee report with the selected AI. */
+    /**
+     * Reads the pending PDF/image as an eZee report.
+     * Known eZee PDFs are read on the phone first (exact numbers, no AI, works offline);
+     * anything else goes to the selected AI.
+     */
     fun readPendingAsReport() {
         val pending = _pendingImport.value ?: return
+        if (pending.file.kind == FileKind.PDF) {
+            viewModelScope.launch {
+                _isImportBusy.value = true
+                _importMessage.value = null
+                val local = EzeePdfReader.read(
+                    getApplication<Application>(), pending.file.bytes, pending.file.fileName, templateStore.templates.value
+                )
+                _isImportBusy.value = false
+                if (local != null) {
+                    val json = EzeePdfReader.toJson(local)
+                    _reportPreview.value = ReportPreview(json, json.toString())
+                } else {
+                    readPendingAsReportWithAi(pending)
+                }
+            }
+        } else {
+            readPendingAsReportWithAi(pending)
+        }
+    }
+
+    private fun readPendingAsReportWithAi(pending: PendingImport) {
         val provider = resolveProvider(settingsRepository.settings.value)
         if (provider == null) {
             _importMessage.value = "✕ ยังไม่ได้ใส่ API key — ไปที่แท็บ \"ตั้งค่า\""
@@ -779,6 +852,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         READING("กำลังอ่าน..."),
         DOCUMENT("อ่านแล้ว — รอยืนยัน"),
         TABLE("บันทึกตารางแล้ว"),
+        REPORT("บันทึกรายงาน eZee แล้ว"),
         FAILED("ไม่สำเร็จ"),
         SKIPPED("ข้าม")
     }
@@ -845,6 +919,26 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     updateBatch(i) { it.copy(fileName = file.fileName) }
 
+                    // eZee reports in a batch are read locally and saved as reports (never as receipts).
+                    if (file.kind == FileKind.PDF) {
+                        val report = EzeePdfReader.read(app, file.bytes, file.fileName, templateStore.templates.value)
+                        if (report != null) {
+                            try {
+                                val sheets = saveLocalReport(file, report)
+                                updateBatch(i) {
+                                    it.copy(
+                                        state = BatchState.REPORT,
+                                        message = "${report.title} ${report.reportDate ?: ""} — ไม่นับในยอด " +
+                                            "(เปิดทีละไฟล์ถ้าต้องการนับ)$sheets"
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                updateBatch(i) { it.copy(state = BatchState.FAILED, message = e.localizedMessage ?: "บันทึกไม่สำเร็จ") }
+                            }
+                            continue
+                        }
+                    }
+
                     when (file.kind) {
                         FileKind.IMAGE, FileKind.PDF -> {
                             if (provider == null) {
@@ -897,15 +991,118 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 val items = _batchItems.value
                 val docs = items.count { it.state == BatchState.DOCUMENT }
+                val reports = items.count { it.state == BatchState.REPORT }
                 val failed = items.count { it.state == BatchState.FAILED }
                 _importMessage.value = (if (failed > 0) "✕ " else "✓ ") +
                     "อ่านเสร็จ ${items.size} ไฟล์ — เอกสารบัญชี $docs ใบรอยืนยัน" +
+                    (if (reports > 0) ", รายงาน eZee $reports ไฟล์" else "") +
                     (if (failed > 0) ", ไม่สำเร็จ $failed ไฟล์" else "") +
                     (if (docs > 0) " • ต้องกด \"ยืนยัน\" ก่อน ยอดจึงจะขึ้นในแดชบอร์ด" else "")
             } finally {
                 _isImportBusy.value = false
             }
         }
+    }
+
+    // ================================================================ Custom readers ("ตัวอ่านที่สร้างเอง")
+
+    /** What the reader builder shows: the report lines of the pending PDF. [editing] = the reader being changed. */
+    class BuilderSession(
+        val fileName: String,
+        val pages: List<List<String>>,
+        val lines: List<LineInfo>,
+        val editing: ReportTemplate?
+    )
+
+    private val _builder = MutableStateFlow<BuilderSession?>(null)
+    val builder: StateFlow<BuilderSession?> = _builder.asStateFlow()
+
+    /** Opens the reader builder for the pending PDF. */
+    fun openTemplateBuilder() {
+        val pending = _pendingImport.value ?: return
+        if (pending.file.kind != FileKind.PDF) {
+            _importMessage.value = "✕ สร้างตัวอ่านได้เฉพาะไฟล์ PDF"
+            return
+        }
+        viewModelScope.launch {
+            _isImportBusy.value = true
+            val pages = withContext(Dispatchers.Default) {
+                try {
+                    EzeePdfReader.pageLines(getApplication<Application>(), pending.file.bytes)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Builder: PDF read failed", e)
+                    emptyList()
+                }
+            }
+            val lines = TemplateEngine.analyze(pages)
+            _isImportBusy.value = false
+            if (lines.none { it.numbers.isNotEmpty() }) {
+                _importMessage.value = "✕ ไฟล์นี้ไม่มีตัวอักษรให้อ่าน (น่าจะเป็นรูปสแกน) — สร้างตัวอ่านไม่ได้ ให้ใช้ AI อ่านแทน"
+                return@launch
+            }
+            val editing = TemplateEngine.find(templateStore.templates.value, pages, pending.file.fileName)
+            _builder.value = BuilderSession(pending.file.fileName, pages, lines, editing)
+        }
+    }
+
+    fun closeTemplateBuilder() {
+        _builder.value = null
+    }
+
+    /** Saves the reader, closes the builder and reads the pending file again with it. */
+    fun saveTemplate(t: ReportTemplate) {
+        viewModelScope.launch {
+            try {
+                templateStore.save(t)
+                _builder.value = null
+                _reportPreview.value = null
+                _importMessage.value = "✓ บันทึกตัวอ่าน \"${t.name}\" แล้ว — ไฟล์แบบนี้ครั้งต่อไปจะอ่านให้อัตโนมัติ"
+                readPendingAsReport()
+            } catch (e: Exception) {
+                _importMessage.value = "✕ บันทึกตัวอ่านไม่สำเร็จ: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun deleteTemplate(id: String) {
+        viewModelScope.launch { templateStore.delete(id) }
+    }
+
+    /** All readers as JSON (for backup / another phone / sending to a developer to check). */
+    fun exportTemplates(): String = templateStore.exportJson()
+
+    fun importTemplates(text: String) {
+        viewModelScope.launch {
+            _importMessage.value = try {
+                val n = templateStore.importJson(text)
+                if (n == 0) "✕ ไม่พบตัวอ่านในข้อความที่วาง" else "✓ นำเข้าตัวอ่าน $n แบบแล้ว"
+            } catch (e: Exception) {
+                "✕ ข้อความนี้ไม่ใช่ตัวอ่านที่ถูกต้อง: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    /** Saves an eZee report read by the local reader (original PDF + JSON), not counted in totals. */
+    private suspend fun saveLocalReport(file: PickedFile, report: EzeeReport): String {
+        val json = EzeePdfReader.toJson(report).toString()
+        val path = repository.saveFile(file.bytes, file.extension)
+        val id = importedFileDao.insert(
+            ImportedFileEntity(
+                kind = ImportKind.EZEE_REPORT.code,
+                fileName = file.fileName,
+                mimeType = file.mimeType,
+                storedPath = path,
+                reportType = report.type,
+                reportDate = report.reportDate,
+                extractedJson = json,
+                rowCount = report.rows.size,
+                targetSheet = "eZee_Reports",
+                status = ImportStatus.SAVED.code,
+                errorMessage = null,
+                sheetSyncedAt = null
+            )
+        )
+        return sendImportToSheets(id)
     }
 
     /** AI-reads one slip/receipt file and saves it as PENDING with its original file. Returns the record id. */
