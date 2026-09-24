@@ -1,6 +1,9 @@
 package com.example
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import androidx.core.content.IntentCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -10,10 +13,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Rule
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -24,8 +28,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -33,10 +39,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
-import com.example.ui.components.RulesGuideContent
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.ImportScreen
 import com.example.ui.screens.ScannerScreen
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AccountantViewModel
 
@@ -44,21 +51,74 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: AccountantViewModel by viewModels()
 
+    /** File shared/opened from another app (e.g. Gmail attachment), waiting to be imported. */
+    private val sharedUri = mutableStateOf<Uri?>(null)
+    private val sharedUris = mutableStateOf<List<Uri>>(emptyList())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) handleIncomingIntent(intent)
         setContent {
             MyApplicationTheme {
-                MainAppScreen(viewModel = viewModel)
+                MainAppScreen(
+                    viewModel = viewModel,
+                    sharedUri = sharedUri.value,
+                    onSharedUriHandled = { sharedUri.value = null },
+                    sharedUris = sharedUris.value,
+                    onSharedUrisHandled = { sharedUris.value = emptyList() }
+                )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        val uri: Uri? = when (intent?.action) {
+            Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            Intent.ACTION_VIEW -> intent.data
+            else -> null
+        }
+        if (uri != null) sharedUri.value = uri
+        if (intent?.action == Intent.ACTION_SEND_MULTIPLE) {
+            val uris = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            if (!uris.isNullOrEmpty()) sharedUris.value = uris.toList()
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainAppScreen(viewModel: AccountantViewModel) {
+fun MainAppScreen(
+    viewModel: AccountantViewModel,
+    sharedUri: Uri? = null,
+    onSharedUriHandled: () -> Unit = {},
+    sharedUris: List<Uri> = emptyList(),
+    onSharedUrisHandled: () -> Unit = {}
+) {
     var currentTab by remember { mutableIntStateOf(0) }
+
+    // A file shared from Gmail/Files: read it and open the Import tab.
+    LaunchedEffect(sharedUri) {
+        if (sharedUri != null) {
+            viewModel.onFilePicked(sharedUri)
+            currentTab = 3
+            onSharedUriHandled()
+        }
+    }
+    // Several files shared at once (e.g. many attachments selected in Files / Gmail).
+    LaunchedEffect(sharedUris) {
+        if (sharedUris.isNotEmpty()) {
+            viewModel.onFilesPicked(sharedUris)
+            currentTab = 3
+            onSharedUrisHandled()
+        }
+    }
 
     Scaffold(
         modifier = Modifier
@@ -73,7 +133,8 @@ fun MainAppScreen(viewModel: AccountantViewModel) {
                             0 -> "แดชบอร์ดสรุปผลบัญชี"
                             1 -> "AI Accountant OCR"
                             2 -> "ประวัติเอกสารบัญชี"
-                            else -> "ขั้นตอน & Schema สกัดข้อมูล"
+                            3 -> "นำเข้าไฟล์ (PDF / CSV / Excel)"
+                            else -> "ตั้งค่า & อัปเดต"
                         },
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
@@ -113,9 +174,16 @@ fun MainAppScreen(viewModel: AccountantViewModel) {
                 NavigationBarItem(
                     selected = currentTab == 3,
                     onClick = { currentTab = 3 },
-                    icon = { Icon(Icons.AutoMirrored.Filled.Rule, contentDescription = "กฎและสกีมา") },
-                    label = { Text("กฎ & Schema", fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.UploadFile, contentDescription = "นำเข้าไฟล์") },
+                    label = { Text("นำเข้า", fontSize = 11.sp) },
                     modifier = Modifier.testTag("nav_item_rules")
+                )
+                NavigationBarItem(
+                    selected = currentTab == 4,
+                    onClick = { currentTab = 4 },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "ตั้งค่า") },
+                    label = { Text("ตั้งค่า", fontSize = 11.sp) },
+                    modifier = Modifier.testTag("nav_item_settings")
                 )
             }
         }
@@ -133,7 +201,8 @@ fun MainAppScreen(viewModel: AccountantViewModel) {
                 )
                 1 -> ScannerScreen(viewModel = viewModel)
                 2 -> HistoryScreen(viewModel = viewModel, onNavigateToScan = { currentTab = 1 })
-                3 -> RulesGuideContent()
+                3 -> ImportScreen(viewModel = viewModel, onGoToScanner = { currentTab = 1 })
+                4 -> SettingsScreen(viewModel = viewModel)
             }
         }
     }

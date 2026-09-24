@@ -17,8 +17,9 @@ android {
     applicationId = "com.aistudio.accountantocr.qrvxkz"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    // In-app update: every new GitHub Release needs a HIGHER versionCode and a matching tag "v<versionName>".
+    versionCode = 2
+    versionName = "1.1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -71,6 +72,10 @@ secrets {
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
 }
 
+// Export Room schema JSON (commit the app/schemas folder) so every DB version is
+// recorded and migrations can be tested instead of wiping user data.
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
 // Some unused dependencies are commented out below instead of being removed.
@@ -117,6 +122,8 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  // Reads the text of eZee PDF reports on the phone (no AI needed)
+  implementation(libs.pdfbox.android)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

@@ -1,0 +1,127 @@
+package com.example.data.sheets
+
+import com.example.data.local.ExtractedDocumentEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+
+/**
+ * Talks to the Google Apps Script Web App (see res/raw/apps_script_code.txt).
+ * Every request is a JSON POST with {action, token, ...}; the script answers {ok, error?}.
+ */
+class SheetsClient {
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        // Apps Script answers POST with a 302 to googleusercontent.com; OkHttp follows it as GET.
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
+    suspend fun ping(url: String, token: String): Result<String> = post(url, token, JSONObject().put("action", "ping"))
+        .map { it.optString("spreadsheet", "") }
+
+    suspend fun upsertDocument(url: String, token: String, doc: ExtractedDocumentEntity): Result<Unit> {
+        val d = JSONObject().apply {
+            put("app_id", "DOC-${doc.id}")
+            put("status", doc.status)
+            put("date", doc.date ?: JSONObject.NULL)
+            put("transaction_type", doc.transactionType)
+            put("document_type", doc.documentType)
+            put("document_no", doc.documentNo ?: JSONObject.NULL)
+            put("seller_name", doc.sellerName ?: JSONObject.NULL)
+            put("seller_tax_id", doc.sellerTaxId ?: JSONObject.NULL)
+            put("customer_name", doc.customerName ?: JSONObject.NULL)
+            put("customer_tax_id", doc.customerTaxId ?: JSONObject.NULL)
+            put("subtotal", doc.subtotal ?: JSONObject.NULL)
+            put("vat_amount", doc.vatAmount ?: JSONObject.NULL)
+            put("total_amount", doc.totalAmount ?: JSONObject.NULL)
+            put("deposit_amount", doc.depositAmount ?: JSONObject.NULL)
+            put("payment_method", doc.paymentMethod ?: JSONObject.NULL)
+            put("verified_at", doc.verifiedAt?.let { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(it)) } ?: JSONObject.NULL)
+            put("source", if (doc.sourceFilePath != null) "file" else "camera")
+        }
+        return post(url, token, JSONObject().put("action", "upsertDocument").put("document", d)).map { }
+    }
+
+    /** [reportJson] is the AI JSON of an eZee report. */
+    suspend fun upsertReport(url: String, token: String, appId: String, fileName: String, reportJson: JSONObject): Result<Int> {
+        val r = JSONObject(reportJson.toString()).apply {
+            put("app_id", appId)
+            put("file_name", fileName)
+        }
+        return post(url, token, JSONObject().put("action", "upsertReport").put("report", r))
+            .map { it.optInt("rows", 0) }
+    }
+
+    /** Sends a table in chunks of [chunkSize] rows. Re-sending the same [importId] replaces the old rows. */
+    suspend fun appendTable(
+        url: String,
+        token: String,
+        importId: String,
+        fileName: String,
+        sheetName: String,
+        headers: List<String>,
+        rows: List<List<String>>,
+        chunkSize: Int = 500
+    ): Result<Int> {
+        var sent = 0
+        val chunks = if (rows.isEmpty()) listOf(emptyList()) else rows.chunked(chunkSize)
+        chunks.forEachIndexed { index, chunk ->
+            val body = JSONObject().apply {
+                put("action", "appendTable")
+                put("importId", importId)
+                put("fileName", fileName)
+                put("sheetName", sheetName)
+                put("chunkIndex", index)
+                put("headers", JSONArray(headers))
+                put("rows", JSONArray().apply { chunk.forEach { put(JSONArray(it)) } })
+            }
+            val result = post(url, token, body)
+            if (result.isFailure) {
+                return Result.failure(
+                    IllegalStateException("ส่งได้ $sent แถว แล้วหยุด: ${result.exceptionOrNull()?.localizedMessage}")
+                )
+            }
+            sent += chunk.size
+        }
+        return Result.success(sent)
+    }
+
+    private suspend fun post(url: String, token: String, body: JSONObject): Result<JSONObject> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(url.startsWith("https://")) { "ยังไม่ได้ใส่ URL ของ Apps Script ในหน้าตั้งค่า" }
+            body.put("token", token)
+            val request = Request.Builder()
+                .url(url)
+                .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+            client.newCall(request).execute().use { response ->
+                val text = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Google Sheets [${response.code}] ตรวจ URL และการ Deploy ของ Apps Script")
+                }
+                val json = try {
+                    JSONObject(text)
+                } catch (e: Exception) {
+                    // HTML instead of JSON usually means the web app is not shared with "Anyone".
+                    throw IllegalStateException(
+                        "Apps Script ไม่ได้ตอบเป็น JSON — ตอน Deploy ต้องเลือก Execute as: Me และ Who has access: Anyone"
+                    )
+                }
+                if (!json.optBoolean("ok", false)) {
+                    throw IllegalStateException("Google Sheets: ${json.optString("error", "ไม่ทราบสาเหตุ")}")
+                }
+                json
+            }
+        }
+    }
+}
