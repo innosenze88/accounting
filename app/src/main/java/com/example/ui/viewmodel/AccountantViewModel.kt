@@ -20,6 +20,8 @@ import com.example.data.ezee.LineInfo
 import com.example.data.ezee.ReportTemplate
 import com.example.data.ezee.TemplateEngine
 import com.example.data.ezee.TemplateStore
+import com.example.data.update.AppUpdater
+import com.example.data.update.UpdateInfo
 import com.example.data.importer.FileImporter
 import com.example.data.importer.FileKind
 import com.example.data.importer.ParsedTable
@@ -62,6 +64,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     private val importedFileDao: ImportedFileDao
     private val sheetsClient = SheetsClient()
     private val templateStore = TemplateStore(application)
+    private val updater = AppUpdater(application)
 
     /** Readers the user created for new report layouts ("ตัวอ่านที่สร้างเอง"). */
     val reportTemplates: StateFlow<List<ReportTemplate>> = templateStore.templates
@@ -73,6 +76,8 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         val db = AppDatabase.getInstance(application)
         repository = DocumentRepository(db.documentDao(), DocumentImageStore(application))
         importedFileDao = db.importedFileDao()
+        // Delete the update APK downloaded last time (the update is installed or was abandoned).
+        viewModelScope.launch(Dispatchers.IO) { updater.cleanUp() }
     }
 
     // ---------------- AI settings ----------------
@@ -1003,6 +1008,75 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
     }
+
+    // ================================================================ In-app update from GitHub Releases
+
+    sealed interface UpdateState {
+        data object Idle : UpdateState
+        data object Checking : UpdateState
+        data object UpToDate : UpdateState
+        data class Available(val info: UpdateInfo) : UpdateState
+        data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateState
+        data class ReadyToInstall(val info: UpdateInfo, val file: java.io.File) : UpdateState
+        data class Error(val message: String) : UpdateState
+    }
+
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
+    val currentAppVersion: String get() = updater.currentVersion
+
+    fun checkForUpdate() {
+        if (_updateState.value is UpdateState.Checking || _updateState.value is UpdateState.Downloading) return
+        viewModelScope.launch {
+            _updateState.value = UpdateState.Checking
+            _updateState.value = updater.checkLatest().fold(
+                onSuccess = { info -> if (info == null) UpdateState.UpToDate else UpdateState.Available(info) },
+                onFailure = { UpdateState.Error("ตรวจสอบไม่สำเร็จ: ${it.localizedMessage ?: "ไม่มีอินเทอร์เน็ต?"}") }
+            )
+        }
+    }
+
+    fun downloadUpdate(info: UpdateInfo) {
+        if (_updateState.value is UpdateState.Downloading) return
+        viewModelScope.launch {
+            _updateState.value = UpdateState.Downloading(info, 0f)
+            var lastShown = -1
+            updater.download(info) { p ->
+                // Update the screen at most every 2 %.
+                val step = (p * 50).toInt()
+                if (step != lastShown) {
+                    lastShown = step
+                    _updateState.value = UpdateState.Downloading(info, p)
+                }
+            }.fold(
+                onSuccess = { file ->
+                    _updateState.value = UpdateState.ReadyToInstall(info, file)
+                    installUpdate()
+                },
+                onFailure = { _updateState.value = UpdateState.Error(it.localizedMessage ?: "ดาวน์โหลดไม่สำเร็จ") }
+            )
+        }
+    }
+
+    /** Opens Android's installer. First time on Android 8+: asks to allow installing from this app. */
+    fun installUpdate() {
+        val ready = _updateState.value as? UpdateState.ReadyToInstall ?: return
+        if (!updater.canInstall()) {
+            updater.openInstallPermissionSettings()
+            return
+        }
+        try {
+            updater.install(ready.file)
+        } catch (e: Exception) {
+            Log.e(TAG, "Install intent failed", e)
+            _updateState.value = UpdateState.Error("เปิดหน้าติดตั้งไม่ได้: ${e.localizedMessage}")
+        }
+    }
+
+    fun canInstallUpdates(): Boolean = updater.canInstall()
+
+    fun openReleasesPage() = updater.openReleasesPage()
 
     // ================================================================ Custom readers ("ตัวอ่านที่สร้างเอง")
 

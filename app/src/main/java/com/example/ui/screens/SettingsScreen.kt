@@ -60,6 +60,7 @@ import com.example.data.settings.AiProvider
 import com.example.R
 import com.example.data.settings.AiSettings
 import com.example.data.settings.AiSettingsRepository
+import com.example.ui.components.UpdateCard
 import com.example.ui.viewmodel.AccountantViewModel
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -90,6 +91,8 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        UpdateCard(viewModel)
+
         Text("AI ที่ใช้อ่านเอกสาร", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AiProvider.entries.forEach { p ->

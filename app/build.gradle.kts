@@ -17,8 +17,9 @@ android {
     applicationId = "com.aistudio.accountantocr.qrvxkz"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    // In-app update: every new GitHub Release needs a HIGHER versionCode and a matching tag "v<versionName>".
+    versionCode = 2
+    versionName = "1.1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

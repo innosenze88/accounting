@@ -134,7 +134,7 @@ fun MainAppScreen(
                             1 -> "AI Accountant OCR"
                             2 -> "ประวัติเอกสารบัญชี"
                             3 -> "นำเข้าไฟล์ (PDF / CSV / Excel)"
-                            else -> "ตั้งค่า AI"
+                            else -> "ตั้งค่า & อัปเดต"
                         },
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
