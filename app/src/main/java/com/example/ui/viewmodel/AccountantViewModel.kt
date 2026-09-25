@@ -10,6 +10,9 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.DocumentImageStore
 import com.example.data.local.ExtractedDocumentEntity
 import com.example.data.local.looksLikeDuplicateOf
+import com.example.data.local.canDelete
+import com.example.data.local.documentStatus
+import com.example.util.ContentHash
 import com.example.data.local.quickVerifyProblem
 import com.example.data.model.TransactionType
 import com.example.data.model.AccountingDocumentJson
@@ -144,6 +147,9 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Original PDF when the scanner is working on an uploaded PDF slip/receipt (null = image). */
     private val _selectedPdf = MutableStateFlow<PickedFile?>(null)
+
+    /** SHA-256 of the shared / uploaded file behind the image on screen (null for camera photos). */
+    private var _selectedSourceHash: String? = null
     val selectedPdfName: StateFlow<String?> = _selectedPdf
         .map { it?.fileName }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -189,6 +195,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun selectSample(sample: SampleDocument) {
+        _selectedSourceHash = null
         _selectedPdf.value = null
         _selectedSample.value = sample
         _selectedBitmap.value = SampleDocumentGenerator.renderDocumentBitmap(sample.id)
@@ -196,6 +203,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setImageBitmap(bitmap: Bitmap) {
+        _selectedSourceHash = null
         _selectedPdf.value = null
         _selectedSample.value = null
         _selectedBitmap.value = bitmap
@@ -203,6 +211,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun clearImage() {
+        _selectedSourceHash = null
         _selectedPdf.value = null
         _selectedSample.value = null
         _selectedBitmap.value = null
@@ -238,7 +247,14 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                     provider == null -> _errorMessage.value =
                         "ยังไม่ได้ใส่ API key ของ ${settingsRepository.settings.value.provider.title} — ไปที่แท็บ \"ตั้งค่า\" เพื่อใส่ key (ระหว่างนี้ทดสอบกับเอกสารตัวอย่างได้ ผลตัวอย่างจะไม่ถูกบันทึกลงบัญชี)"
 
-                    else -> runRealExtraction(bitmap, _selectedPdf.value, requireNotNull(provider))
+                    else -> {
+                        val sameFile = _selectedSourceHash?.let { findSameFile(it) }
+                        if (sameFile != null) {
+                            _errorMessage.value = duplicateFileMessage(sameFile)
+                        } else {
+                            runRealExtraction(bitmap, _selectedPdf.value, requireNotNull(provider), _selectedSourceHash)
+                        }
+                    }
                 }
             } finally {
                 _isExtracting.value = false
@@ -274,7 +290,8 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     private suspend fun runRealExtraction(
         bitmap: Bitmap,
         pdf: PickedFile?,
-        provider: Triple<OcrService, String, String>
+        provider: Triple<OcrService, String, String>,
+        contentHash: String?
     ) {
         val (service, key, model) = provider
         // Uploaded PDFs go to the AI as the original file (all pages); photos go as images.
@@ -288,7 +305,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                     // Keep the original image as evidence, then save the AI result as PENDING.
                     val imagePath = repository.saveImage(bitmap)
                     val sourcePath = pdf?.let { repository.saveFile(it.bytes, it.extension) }
-                    val id = repository.savePendingDocument(doc, raw, imagePath, sourcePath)
+                    val id = repository.savePendingDocument(doc, raw, imagePath, sourcePath, contentHash)
                     _currentRecordId.value = id
                 } catch (e: Exception) {
                     Log.e(TAG, "Saving document failed", e)
@@ -364,12 +381,85 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /** Deletes a document that was never counted. Counted documents can only be voided ([voidDocument]). */
     fun deleteHistory(id: Long) {
         viewModelScope.launch {
-            repository.deleteDocument(id)
-            if (_currentRecordId.value == id) clearImage()
+            try {
+                repository.deleteDocument(id)
+                if (_currentRecordId.value == id) clearImage()
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "ลบไม่สำเร็จ"
+            }
         }
     }
+
+    private val _actionMessage = MutableStateFlow<String?>(null)
+    /** Result of a void / delete done from the history list (shown once, then cleared). */
+    val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
+    fun clearActionMessage() { _actionMessage.value = null }
+
+    /**
+     * Cancels a counted document with a reason: it stops counting, stays in the history as a record,
+     * and is moved from "Accounting" to "Voided" in Google Sheets.
+     */
+    fun voidDocument(id: Long, reason: String) {
+        viewModelScope.launch {
+            try {
+                repository.voidDocument(id, reason) ?: return@launch
+                val sheetError = sendVoidToSheets(id)
+                _actionMessage.value = "✓ ยกเลิกรายการแล้ว — ไม่นับในยอดอีกต่อไป" +
+                    (sheetError?.let { "\n✕ Google Sheets: $it (กด \"ส่งที่ค้าง\" ในหน้าตั้งค่าเพื่อส่งอีกครั้ง)" } ?: "")
+            } catch (e: Exception) {
+                Log.e(TAG, "Void failed", e)
+                _actionMessage.value = "✕ ยกเลิกไม่สำเร็จ: ${e.localizedMessage ?: "Unknown"}"
+            }
+        }
+    }
+
+    /** Sends a void to Google Sheets when the document was sent there before. Returns the error text or null. */
+    private suspend fun sendVoidToSheets(id: Long): String? {
+        val settings = settingsRepository.settings.value
+        val doc = repository.getDocumentById(id) ?: return null
+        if (!settings.sheetsEnabled || doc.sheetSyncedAt == null) return null
+        return sheetsClient.voidDocument(settings.sheetsWebAppUrl, settings.sheetsToken, doc).fold(
+            onSuccess = { repository.markSheetSynced(id); null },
+            onFailure = { sheetsErrorText(it) }
+        )
+    }
+
+    private fun sheetsErrorText(e: Throwable): String {
+        val msg = e.localizedMessage ?: "Unknown"
+        return if ("unknown action" in msg) {
+            "ต้องอัปเดตโค้ด Apps Script ก่อน (ตั้งค่า → คัดลอกโค้ด Apps Script → วางแทนของเดิม → Deploy เวอร์ชันใหม่)"
+        } else msg
+    }
+
+    /** An active document (not rejected / voided) made from the very same file, if any. */
+    private suspend fun findSameFile(hash: String): ExtractedDocumentEntity? =
+        repository.getByContentHash(hash).firstOrNull {
+            it.sampleId == null && it.documentStatus() != DocumentStatus.REJECTED &&
+                it.documentStatus() != DocumentStatus.VOIDED
+        }
+
+    private fun describeDocument(e: ExtractedDocumentEntity): String =
+        "เอกสาร #${e.id}" + (e.date?.let { " วันที่ $it" } ?: "") +
+            (e.totalAmount?.let { " ยอด ${String.format(java.util.Locale.US, "%,.2f", it)} ฿" } ?: "") +
+            " (${e.documentStatus().titleTh})"
+
+    private fun duplicateFileMessage(e: ExtractedDocumentEntity): String =
+        "ไฟล์นี้นำเข้าไปแล้ว — ${describeDocument(e)}" +
+            if (e.documentStatus() == DocumentStatus.PENDING) " ไปที่แท็บประวัติเพื่อตรวจและยืนยันใบเดิม" else ""
+
+    /**
+     * Another active document that looks like the one on screen (same file, same no. + amount,
+     * or same date + amount + seller). Shown as a warning before verifying.
+     */
+    val duplicateOfCurrent: StateFlow<ExtractedDocumentEntity?> =
+        kotlinx.coroutines.flow.combine(currentRecord, repository.allDocuments) { current, all ->
+            if (current == null || current.sampleId != null) return@combine null
+            val matches = all.filter { current.looksLikeDuplicateOf(it) }
+            matches.firstOrNull { it.documentStatus() == DocumentStatus.VERIFIED } ?: matches.firstOrNull()
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun clearAllHistory() {
         viewModelScope.launch {
@@ -389,8 +479,14 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     /** Verified documents not yet in Google Sheets (or edited after the last send). */
     val unsyncedCount: StateFlow<Int> = repository.allDocuments
         .map { list ->
-            list.count { it.sampleId == null && it.status == DocumentStatus.VERIFIED.code &&
-                (it.sheetSyncedAt == null || it.sheetSyncedAt < (it.verifiedAt ?: 0L)) }
+            list.count {
+                it.sampleId == null && (
+                    (it.status == DocumentStatus.VERIFIED.code &&
+                        (it.sheetSyncedAt == null || it.sheetSyncedAt < (it.verifiedAt ?: 0L))) ||
+                        (it.status == DocumentStatus.VOIDED.code && it.sheetSyncedAt != null &&
+                            it.sheetSyncedAt < (it.voidedAt ?: 0L))
+                    )
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -400,7 +496,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         val doc = repository.getDocumentById(id) ?: return "ไม่พบเอกสาร"
         return sheetsClient.upsertDocument(settings.sheetsWebAppUrl, settings.sheetsToken, doc).fold(
             onSuccess = { repository.markSheetSynced(id); null },
-            onFailure = { it.localizedMessage ?: "Unknown" }
+            onFailure = { sheetsErrorText(it) }
         )
     }
 
@@ -424,11 +520,12 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             _isSheetsBusy.value = true
             _sheetsMessage.value = null
-            val pending = repository.getVerifiedNotSynced()
+            val pending = repository.getVerifiedNotSynced() + repository.getVoidedNotSynced()
             var ok = 0
             var lastError: String? = null
             for (doc in pending) {
-                val error = syncDocumentToSheets(doc.id)
+                val error = if (doc.documentStatus() == DocumentStatus.VOIDED) sendVoidToSheets(doc.id)
+                else syncDocumentToSheets(doc.id)
                 if (error == null) ok++ else lastError = error
             }
             _sheetsMessage.value = when {
@@ -620,6 +717,8 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         val preview = pending.preview ?: placeholderBitmap()
         setImageBitmap(preview) // also clears any previous result
         if (pending.file.kind == FileKind.PDF) _selectedPdf.value = pending.file
+        // Fingerprint of the original shared/uploaded file: the same slip imported twice is caught before the AI runs.
+        _selectedSourceHash = ContentHash.sha256(pending.file.bytes)
         clearPendingImport()
         return true
     }
@@ -798,10 +897,22 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     fun deleteImport(id: Long) {
         viewModelScope.launch {
             val entity = importedFileDao.getById(id) ?: return@launch
-            // A report that was counted in the totals: remove its accounting row too.
+            // A report that was counted in the totals: its accounting row is voided (kept as a record), not deleted.
             val counted = repository.getByDocumentNo(reportDocumentNo(id))
-            counted.forEach { repository.deleteRowOnly(it.id) }
-            if (counted.isNotEmpty()) _importMessage.value = "✓ ลบรายงานและยอดที่นับไว้ในแดชบอร์ดแล้ว"
+            var sheetError: String? = null
+            counted.forEach { doc ->
+                when {
+                    doc.canDelete() -> repository.deleteRowOnly(doc.id)
+                    doc.documentStatus() != DocumentStatus.VOIDED -> {
+                        repository.voidDocument(doc.id, "ลบรายงาน eZee: ${entity.fileName}")
+                        sendVoidToSheets(doc.id)?.let { sheetError = it }
+                    }
+                }
+            }
+            if (counted.isNotEmpty()) {
+                _importMessage.value = "✓ ลบรายงานแล้ว — ยอดที่นับไว้ถูกยกเลิก (ดูได้ในประวัติ)" +
+                    (sheetError?.let { " • Google Sheets: $it" } ?: "")
+            }
             importedFileDao.deleteById(id)
             DocumentImageStore(getApplication<Application>()).delete(entity.storedPath)
         }
@@ -948,6 +1059,13 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                         FileKind.IMAGE, FileKind.PDF -> {
                             if (provider == null) {
                                 updateBatch(i) { it.copy(state = BatchState.FAILED, message = "ยังไม่ได้ใส่ API key (แท็บ \"ตั้งค่า\")") }
+                                continue
+                            }
+                            val sameFile = findSameFile(ContentHash.sha256(file.bytes))
+                            if (sameFile != null) {
+                                updateBatch(i) {
+                                    it.copy(state = BatchState.SKIPPED, message = "ไฟล์ซ้ำ — ${describeDocument(sameFile)}")
+                                }
                                 continue
                             }
                             readBatchDocument(file, provider).fold(
@@ -1199,7 +1317,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         val (doc, raw) = service.extract(input, key, model).getOrThrow()
         val imagePath = repository.saveImage(evidence)
         val sourcePath = if (file.kind == FileKind.PDF) repository.saveFile(file.bytes, file.extension) else null
-        repository.savePendingDocument(doc, raw, imagePath, sourcePath)
+        repository.savePendingDocument(doc, raw, imagePath, sourcePath, ContentHash.sha256(file.bytes))
     }
 
     /** Problems shown next to a batch document (missing data or a possible duplicate). */
@@ -1223,6 +1341,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
             _isImportBusy.value = true
             var ok = 0
             var skipped = 0
+            var duplicates = 0
             var sheetError: String? = null
             try {
                 val settings = settingsRepository.settings.value
@@ -1230,6 +1349,12 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                     val entity = repository.getDocumentById(id)
                     if (entity == null || entity.quickVerifyProblem() != null) {
                         skipped++
+                        continue
+                    }
+                    // Never count the same slip twice: skip it when an already counted document matches.
+                    val all = repository.getAllOnce()
+                    if (all.any { it.documentStatus() == DocumentStatus.VERIFIED && entity.looksLikeDuplicateOf(it) }) {
+                        duplicates++
                         continue
                     }
                     val tx = TransactionType.fromCode(entity.transactionType)!!.code
@@ -1241,6 +1366,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 _importMessage.value = "✓ ยืนยันแล้ว $ok เอกสาร — นับเข้ายอดแดชบอร์ดแล้ว" +
                     (if (skipped > 0) " • ข้าม $skipped เอกสารที่ข้อมูลไม่ครบ (กด \"ตรวจ\" เพื่อแก้)" else "") +
+                    (if (duplicates > 0) " • ข้าม $duplicates เอกสารที่ซ้ำกับที่นับไว้แล้ว (เปิดตรวจทีละใบ)" else "") +
                     (sheetError?.let { " • ส่ง Google Sheets ไม่สำเร็จบางรายการ: $it" } ?: "")
             } catch (e: Exception) {
                 Log.e(TAG, "Bulk verify failed", e)

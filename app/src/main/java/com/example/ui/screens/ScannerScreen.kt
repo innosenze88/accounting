@@ -81,6 +81,14 @@ import com.example.ui.components.DocumentReviewForm
 import com.example.ui.components.DocumentStatusBadge
 import com.example.ui.components.ExtractedDocumentCard
 import com.example.ui.components.JsonViewer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import com.example.data.local.canVoid
+import com.example.ui.components.DuplicateWarningCard
+import com.example.ui.components.VoidDocumentDialog
+import com.example.ui.components.VoidedInfoCard
+import com.example.ui.components.documentSummary
 import com.example.ui.viewmodel.AccountantViewModel
 import com.example.util.SampleDocument
 import com.example.util.SampleDocumentGenerator
@@ -104,6 +112,11 @@ fun ScannerScreen(
     val selectedPdfName by viewModel.selectedPdfName.collectAsStateWithLifecycle()
 
     var activeResultTab by remember { mutableIntStateOf(0) }
+    val duplicateOf by viewModel.duplicateOfCurrent.collectAsStateWithLifecycle()
+    val actionMessage by viewModel.actionMessage.collectAsStateWithLifecycle()
+    var showVoidDialog by remember { mutableStateOf(false) }
+    /** Reviewed values waiting for "verify anyway" when the document looks like a duplicate. */
+    var pendingVerify by remember { mutableStateOf<com.example.data.model.AccountingDocumentJson?>(null) }
 
     // Zero-permission Photo Picker per Play Policy
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -443,17 +456,43 @@ fun ScannerScreen(
             val recordStatus = record?.documentStatus()
             if (activeResultTab == 0) {
                 if (record != null && !isDemoResult && recordStatus == DocumentStatus.PENDING) {
+                    duplicateOf?.let { dup ->
+                        DuplicateWarningCard(dup)
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
                     // Human review step: nothing counts in the books until a person confirms it.
                     val initialDoc = remember(record.id) { record.toAccountingDocument() }
                     DocumentReviewForm(
                         initial = initialDoc,
                         formKey = record.id,
-                        onVerify = { reviewed -> viewModel.verifyCurrent(reviewed) },
-                        onReject = { viewModel.rejectCurrent() }
+                        onVerify = { reviewed ->
+                            // Possible duplicate: ask once more before it is counted.
+                            if (duplicateOf != null) pendingVerify = reviewed else viewModel.verifyCurrent(reviewed)
+                        },
+                        // A document that was counted before is cancelled with a reason, not just rejected.
+                        onReject = { if (record.canVoid()) showVoidDialog = true else viewModel.rejectCurrent() }
                     )
                 } else {
+                    if (record != null && recordStatus == DocumentStatus.VOIDED) {
+                        VoidedInfoCard(record)
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
                     ExtractedDocumentCard(doc = extractedDoc!!)
-                    if (record != null && !isDemoResult && recordStatus != DocumentStatus.PENDING) {
+                    if (record != null && !isDemoResult && recordStatus == DocumentStatus.VERIFIED) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { showVoidDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("scanner_void_button"),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("ยกเลิกรายการ (ต้องใส่เหตุผล)", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    if (record != null && !isDemoResult && recordStatus != DocumentStatus.PENDING &&
+                        recordStatus != DocumentStatus.VOIDED
+                    ) {
                         Spacer(modifier = Modifier.height(10.dp))
                         OutlinedButton(
                             onClick = { viewModel.reopenCurrent() },
@@ -474,6 +513,45 @@ fun ScannerScreen(
         }
 
         Spacer(modifier = Modifier.height(30.dp))
+    }
+
+    val record = currentRecord
+    if (showVoidDialog && record != null) {
+        VoidDocumentDialog(
+            entity = record,
+            onConfirm = { reason ->
+                viewModel.voidDocument(record.id, reason)
+                showVoidDialog = false
+            },
+            onDismiss = { showVoidDialog = false }
+        )
+    }
+    pendingVerify?.let { reviewed ->
+        AlertDialog(
+            onDismissRequest = { pendingVerify = null },
+            title = { Text("ยืนยันทั้งที่อาจซ้ำ?") },
+            text = {
+                Text(
+                    "เอกสารนี้คล้ายกับ ${duplicateOf?.let { documentSummary(it) } ?: "เอกสารอื่น"} " +
+                        "— ถ้าเป็นใบเดียวกัน ยอดจะถูกนับ 2 ครั้ง",
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.verifyCurrent(reviewed)
+                    pendingVerify = null
+                }) { Text("ไม่ซ้ำ ยืนยันเลย") }
+            },
+            dismissButton = { TextButton(onClick = { pendingVerify = null }) { Text("กลับไปตรวจ") } }
+        )
+    }
+    actionMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearActionMessage() },
+            confirmButton = { TextButton(onClick = { viewModel.clearActionMessage() }) { Text("ตกลง") } },
+            text = { Text(msg, fontSize = 14.sp) }
+        )
     }
 }
 

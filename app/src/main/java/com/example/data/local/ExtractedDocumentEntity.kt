@@ -43,7 +43,13 @@ data class ExtractedDocumentEntity(
     /** Original uploaded file (e.g. a PDF slip) when the source was not a camera image. */
     val sourceFilePath: String? = null,
     /** When this document was last sent to Google Sheets (null = not sent). */
-    val sheetSyncedAt: Long? = null
+    val sheetSyncedAt: Long? = null,
+    // ---- Added in DB version 4 ----
+    /** Why a counted document was cancelled (see [DocumentStatus.VOIDED]). */
+    val voidReason: String? = null,
+    val voidedAt: Long? = null,
+    /** SHA-256 of the original file (shared/uploaded image or PDF) to catch the same file imported twice. */
+    val contentHash: String? = null
 ) {
     fun toAccountingDocument(): AccountingDocumentJson {
         val parsedItems = try {
@@ -100,7 +106,8 @@ data class ExtractedDocumentEntity(
             rawJson: String,
             sampleId: String? = null,
             imagePath: String? = null,
-            sourceFilePath: String? = null
+            sourceFilePath: String? = null,
+            contentHash: String? = null
         ): ExtractedDocumentEntity {
             return ExtractedDocumentEntity(
                 documentType = model.documentType ?: "OTHER",
@@ -121,7 +128,8 @@ data class ExtractedDocumentEntity(
                 sampleId = sampleId,
                 status = DocumentStatus.PENDING.code,
                 imagePath = imagePath,
-                sourceFilePath = sourceFilePath
+                sourceFilePath = sourceFilePath,
+                contentHash = contentHash
             )
         }
     }
@@ -157,9 +165,28 @@ fun ExtractedDocumentEntity.quickVerifyProblem(): String? {
     return null
 }
 
-/** Same document already saved (same no. + total, or same date + total + seller) and not rejected. */
+/**
+ * A document that was ever verified (counted in the totals) must never be deleted, only voided with a reason.
+ * Samples and documents that were never verified (PENDING / REJECTED) may be deleted.
+ */
+fun ExtractedDocumentEntity.canDelete(): Boolean =
+    sampleId != null || (verifiedAt == null && documentStatus() != DocumentStatus.VERIFIED &&
+        documentStatus() != DocumentStatus.VOIDED)
+
+/** Can be cancelled with a reason (it is, or was, counted and is not cancelled yet). */
+fun ExtractedDocumentEntity.canVoid(): Boolean =
+    sampleId == null && documentStatus() != DocumentStatus.VOIDED &&
+        (documentStatus() == DocumentStatus.VERIFIED || verifiedAt != null)
+
+/**
+ * Same document already saved and still active (not rejected / voided):
+ * the very same file, or the same no. + total, or the same date + total + seller.
+ */
 fun ExtractedDocumentEntity.looksLikeDuplicateOf(other: ExtractedDocumentEntity): Boolean {
-    if (other.id == id || other.sampleId != null || other.documentStatus() == DocumentStatus.REJECTED) return false
+    if (other.id == id || other.sampleId != null) return false
+    val otherStatus = other.documentStatus()
+    if (otherStatus == DocumentStatus.REJECTED || otherStatus == DocumentStatus.VOIDED) return false
+    if (!contentHash.isNullOrEmpty() && contentHash == other.contentHash) return true
     val sameTotal = totalAmount != null && other.totalAmount != null &&
         kotlin.math.abs(totalAmount - other.totalAmount) < 0.005
     if (!sameTotal) return false

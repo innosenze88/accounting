@@ -40,6 +40,19 @@ interface DocumentDao {
     )
     suspend fun getVerifiedNotSynced(): List<ExtractedDocumentEntity>
 
+    /** Voided documents that are still in Google Sheets' Accounting sheet (void not sent yet). */
+    @Query(
+        "SELECT * FROM extracted_documents WHERE status = 'VOIDED' AND sampleId IS NULL " +
+            "AND sheetSyncedAt IS NOT NULL AND sheetSyncedAt < voidedAt ORDER BY createdAt"
+    )
+    suspend fun getVoidedNotSynced(): List<ExtractedDocumentEntity>
+
+    @Query("SELECT * FROM extracted_documents")
+    suspend fun getAllOnce(): List<ExtractedDocumentEntity>
+
+    @Query("SELECT * FROM extracted_documents WHERE contentHash = :hash")
+    suspend fun getByContentHash(hash: String): List<ExtractedDocumentEntity>
+
     @Query("UPDATE extracted_documents SET sheetSyncedAt = :time WHERE id = :id")
     suspend fun markSheetSynced(id: Long, time: Long)
 

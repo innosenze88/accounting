@@ -280,6 +280,7 @@ fun DocumentStatusBadge(statusCode: String?, isSample: Boolean = false, modifier
         isSample -> Triple(Color(0xFFECEFF1), Color(0xFF455A64), "ตัวอย่าง (ไม่นับยอด)")
         status == DocumentStatus.VERIFIED -> Triple(Color(0xFFE8F5E9), Color(0xFF1B5E20), status.titleTh)
         status == DocumentStatus.REJECTED -> Triple(Color(0xFFFFEBEE), Color(0xFFB71C1C), status.titleTh)
+        status == DocumentStatus.VOIDED -> Triple(Color(0xFFECEFF1), Color(0xFF37474F), "${status.titleTh} (ไม่นับยอด)")
         else -> Triple(Color(0xFFFFF8E1), Color(0xFFE65100), status.titleTh)
     }
     Box(

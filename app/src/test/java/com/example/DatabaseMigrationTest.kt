@@ -8,6 +8,9 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.ExtractedDocumentEntity
 import com.example.data.local.ImportedFileEntity
 import com.example.data.local.countsInAccounting
+import com.example.data.local.looksLikeDuplicateOf
+import com.example.data.local.canVoid
+import com.example.data.local.canDelete
 import com.example.data.model.DocumentStatus
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -39,7 +42,7 @@ class DatabaseMigrationTest {
     """.trimIndent()
 
     @Test
-    fun `migration 1 to 3 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
+    fun `migration 1 to 4 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
         val name = "migration_test.db"
         context.deleteDatabase(name)
 
@@ -69,6 +72,11 @@ class DatabaseMigrationTest {
         assertFalse("un-reviewed rows must not count in totals", row.countsInAccounting())
         assertNull(row.sourceFilePath)
         assertNull(row.sheetSyncedAt)
+        // v4 columns
+        assertNull(row.voidReason)
+        assertNull(row.voidedAt)
+        assertNull(row.contentHash)
+        assertTrue("never counted -> may be deleted", row.canDelete())
 
         // v3 table exists and works
         val importId = roomDb.importedFileDao().insert(
@@ -82,6 +90,43 @@ class DatabaseMigrationTest {
 
         roomDb.close()
         context.deleteDatabase(name)
+    }
+
+    private val doc = ExtractedDocumentEntity(
+        id = 1, documentType = "RECEIPT", transactionType = "INCOME", documentNo = "TX-1", date = "2026-09-25",
+        sellerName = "ร้าน A", sellerTaxId = null, customerName = null, customerTaxId = null,
+        subtotal = null, vatAmount = null, totalAmount = 1500.0, depositAmount = null,
+        paymentMethod = null, lineItemsJson = "[]", rawJson = "{}"
+    )
+
+    @Test
+    fun `counted documents cannot be deleted, only voided`() {
+        assertTrue(doc.canDelete())
+        assertFalse(doc.canVoid())
+        val verified = doc.copy(status = DocumentStatus.VERIFIED.code, verifiedAt = 1L)
+        assertFalse(verified.canDelete())
+        assertTrue(verified.canVoid())
+        // Sent back to review after being counted: still protected.
+        val reopened = verified.copy(status = DocumentStatus.PENDING.code)
+        assertFalse(reopened.canDelete())
+        assertTrue(reopened.canVoid())
+        val voided = verified.copy(status = DocumentStatus.VOIDED.code, voidReason = "สลิปซ้ำ", voidedAt = 2L)
+        assertFalse(voided.canDelete())
+        assertFalse(voided.canVoid())
+        assertFalse("voided never counts", voided.countsInAccounting())
+    }
+
+    @Test
+    fun `duplicates are found by file, by number and by date plus seller`() {
+        val other = doc.copy(id = 2, status = DocumentStatus.VERIFIED.code)
+        assertTrue(doc.looksLikeDuplicateOf(other)) // same no. + total
+        assertTrue(doc.copy(documentNo = null).looksLikeDuplicateOf(other.copy(documentNo = null))) // same date + total + seller
+        assertFalse(doc.looksLikeDuplicateOf(other.copy(totalAmount = 1499.0)))
+        // Same file even when the AI read the amount differently.
+        assertTrue(doc.copy(contentHash = "abc").looksLikeDuplicateOf(other.copy(totalAmount = 99.0, contentHash = "abc")))
+        // Voided / rejected documents are not duplicates any more.
+        assertFalse(doc.looksLikeDuplicateOf(other.copy(status = DocumentStatus.VOIDED.code)))
+        assertFalse(doc.looksLikeDuplicateOf(other.copy(status = DocumentStatus.REJECTED.code)))
     }
 
     @Test
