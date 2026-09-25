@@ -106,7 +106,9 @@ enum class TransactionType(val code: String, val titleTh: String, val descriptio
 enum class DocumentStatus(val code: String, val titleTh: String) {
     PENDING("PENDING", "รอตรวจสอบ"),
     VERIFIED("VERIFIED", "ตรวจแล้ว"),
-    REJECTED("REJECTED", "ปฏิเสธ");
+    REJECTED("REJECTED", "ปฏิเสธ"),
+    /** Was verified (counted), then cancelled with a reason. Kept forever as a record; never counted. */
+    VOIDED("VOIDED", "ยกเลิกแล้ว");
 
     companion object {
         fun fromCode(code: String?): DocumentStatus {

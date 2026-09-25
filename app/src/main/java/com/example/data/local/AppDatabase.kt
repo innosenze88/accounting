@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ExtractedDocumentEntity::class, ImportedFileEntity::class], version = 3, exportSchema = true)
+@Database(entities = [ExtractedDocumentEntity::class, ImportedFileEntity::class], version = 4, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun documentDao(): DocumentDao
     abstract fun importedFileDao(): ImportedFileDao
@@ -50,8 +50,20 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 -> v4: cancelling (voiding) counted documents instead of deleting them,
+         * and a fingerprint of the original file to catch the same slip imported twice.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE extracted_documents ADD COLUMN voidReason TEXT")
+                db.execSQL("ALTER TABLE extracted_documents ADD COLUMN voidedAt INTEGER")
+                db.execSQL("ALTER TABLE extracted_documents ADD COLUMN contentHash TEXT")
+            }
+        }
+
         /** Every future schema change must add its Migration here. Never use destructive migration. */
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {

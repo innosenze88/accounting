@@ -602,7 +602,7 @@ private fun BatchResultCard(
                                 fontSize = 12.sp,
                                 color = when (status) {
                                     DocumentStatus.VERIFIED -> Color(0xFF2E7D32)
-                                    DocumentStatus.REJECTED -> MaterialTheme.colorScheme.error
+                                    DocumentStatus.REJECTED, DocumentStatus.VOIDED -> MaterialTheme.colorScheme.error
                                     DocumentStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )

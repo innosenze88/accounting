@@ -63,6 +63,13 @@ import com.example.ui.components.DocumentTypeBadge
 import com.example.ui.components.ExtractedDocumentCard
 import com.example.ui.components.JsonViewer
 import com.example.ui.components.TransactionTypeBadge
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.ui.text.style.TextDecoration
+import com.example.data.local.canDelete
+import com.example.data.local.canVoid
+import com.example.ui.components.ConfirmDeleteDialog
+import com.example.ui.components.VoidDocumentDialog
+import com.example.ui.components.VoidedInfoCard
 import com.example.ui.viewmodel.AccountantViewModel
 
 @Composable
@@ -74,6 +81,9 @@ fun HistoryScreen(
     val historyList by viewModel.historyList.collectAsStateWithLifecycle()
     var selectedFilterType by remember { mutableStateOf<String?>(null) }
     var selectedEntityForDetail by remember { mutableStateOf<ExtractedDocumentEntity?>(null) }
+    var confirmDelete by remember { mutableStateOf<ExtractedDocumentEntity?>(null) }
+    var confirmVoid by remember { mutableStateOf<ExtractedDocumentEntity?>(null) }
+    val actionMessage by viewModel.actionMessage.collectAsStateWithLifecycle()
 
     val filteredList = remember(historyList, selectedFilterType) {
         when (selectedFilterType) {
@@ -270,11 +280,41 @@ fun HistoryScreen(
                     HistoryItemCard(
                         entity = entity,
                         onClick = { selectedEntityForDetail = entity },
-                        onDelete = { viewModel.deleteHistory(entity.id) }
+                        onDelete = { confirmDelete = entity },
+                        onVoid = { confirmVoid = entity }
                     )
                 }
             }
         }
+    }
+
+    confirmDelete?.let { e ->
+        ConfirmDeleteDialog(
+            entity = e,
+            onConfirm = {
+                viewModel.deleteHistory(e.id)
+                confirmDelete = null
+            },
+            onDismiss = { confirmDelete = null }
+        )
+    }
+    confirmVoid?.let { e ->
+        VoidDocumentDialog(
+            entity = e,
+            onConfirm = { reason ->
+                viewModel.voidDocument(e.id, reason)
+                confirmVoid = null
+                selectedEntityForDetail = null
+            },
+            onDismiss = { confirmVoid = null }
+        )
+    }
+    actionMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearActionMessage() },
+            confirmButton = { TextButton(onClick = { viewModel.clearActionMessage() }) { Text("ตกลง") } },
+            text = { Text(msg, fontSize = 14.sp) }
+        )
     }
 
     // Detail Dialog when item is clicked
@@ -296,8 +336,15 @@ fun HistoryScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { selectedEntityForDetail = null }) {
-                    Text("ปิด")
+                Row {
+                    if (entity.canVoid()) {
+                        TextButton(onClick = { confirmVoid = entity }, modifier = Modifier.testTag("detail_void_button")) {
+                            Text("ยกเลิกรายการ", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    TextButton(onClick = { selectedEntityForDetail = null }) {
+                        Text("ปิด")
+                    }
                 }
             },
             title = {
@@ -316,6 +363,10 @@ fun HistoryScreen(
                 ) {
                     DocumentStatusBadge(statusCode = entity.status, isSample = entity.sampleId != null)
                     Spacer(modifier = Modifier.height(8.dp))
+                    if (entity.documentStatus() == DocumentStatus.VOIDED) {
+                        VoidedInfoCard(entity)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     if (entity.imagePath != null) {
                         AsyncImage(
                             model = File(entity.imagePath),
@@ -341,9 +392,11 @@ fun HistoryScreen(
 private fun HistoryItemCard(
     entity: ExtractedDocumentEntity,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onVoid: () -> Unit
 ) {
     val isIncome = entity.transactionType.equals("INCOME", ignoreCase = true)
+    val voided = entity.documentStatus() == DocumentStatus.VOIDED
 
     Card(
         modifier = Modifier
@@ -364,16 +417,37 @@ private fun HistoryItemCard(
                     DocumentTypeBadge(docTypeCode = entity.documentType)
                     TransactionTypeBadge(typeCode = entity.transactionType)
                 }
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "ลบ",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp)
-                    )
+                when {
+                    // Never counted: may be deleted (after a confirmation).
+                    entity.canDelete() -> IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .testTag("delete_button_${entity.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "ลบ",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    // Counted: can only be cancelled with a reason.
+                    entity.canVoid() -> TextButton(
+                        onClick = onVoid,
+                        modifier = Modifier
+                            .height(30.dp)
+                            .testTag("void_button_${entity.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Block,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("ยกเลิกรายการ", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
 
@@ -407,7 +481,20 @@ private fun HistoryItemCard(
                     text = entity.totalAmount?.let { String.format("%,.2f ฿", it) } ?: "-",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = if (isIncome) Color(0xFF2E7D32) else Color(0xFFC62828)
+                    textDecoration = if (voided) TextDecoration.LineThrough else null,
+                    color = when {
+                        voided -> MaterialTheme.colorScheme.onSurfaceVariant
+                        isIncome -> Color(0xFF2E7D32)
+                        else -> Color(0xFFC62828)
+                    }
+                )
+            }
+            if (voided) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "ยกเลิกแล้ว: ${entity.voidReason ?: "-"}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

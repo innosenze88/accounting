@@ -13,6 +13,7 @@
  *
  * แผ่นงานที่สร้างอัตโนมัติ
  *   Accounting      เอกสารบัญชีที่ยืนยันแล้ว (1 แถวต่อเอกสาร อัปเดตแถวเดิมถ้าส่งซ้ำ)
+ *   Voided          เอกสารที่ยกเลิกในแอป (ย้ายออกจาก Accounting มาไว้ที่นี่ พร้อมเหตุผล)
  *   eZee_Reports    สรุปตัวเลขของรายงาน eZee แต่ละฉบับ
  *   eZee_<ประเภท>   ตารางรายละเอียดของรายงานแต่ละประเภท
  *   (ชื่อที่ตั้งเอง)   ข้อมูลจากไฟล์ CSV / Excel
@@ -33,6 +34,8 @@ function doPost(e) {
           return json_({ ok: true, spreadsheet: SpreadsheetApp.getActive().getName() });
         case 'upsertDocument':
           return json_(upsertDocument_(body.document));
+        case 'voidDocument':
+          return json_(voidDocument_(body.document));
         case 'upsertReport':
           return json_(upsertReport_(body.report));
         case 'appendTable':
@@ -119,7 +122,17 @@ function deleteRowsWhere_(sh, key, value) {
 
 function upsertDocument_(doc) {
   doc.synced_at = new Date();
+  // A document sent again after being voided and re-counted must not stay in Voided.
+  deleteRowsWhere_(sheet_('Voided'), 'app_id', doc.app_id);
   return { ok: true, result: upsertRow_(sheet_('Accounting'), doc, 'app_id') };
+}
+
+// A document cancelled in the app: removed from Accounting (so totals stay right) and kept in Voided.
+function voidDocument_(doc) {
+  doc.synced_at = new Date();
+  upsertRow_(sheet_('Voided'), doc, 'app_id');
+  deleteRowsWhere_(sheet_('Accounting'), 'app_id', doc.app_id);
+  return { ok: true, result: 'voided' };
 }
 
 function upsertReport_(r) {

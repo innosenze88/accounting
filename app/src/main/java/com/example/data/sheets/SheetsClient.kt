@@ -29,8 +29,16 @@ class SheetsClient {
     suspend fun ping(url: String, token: String): Result<String> = post(url, token, JSONObject().put("action", "ping"))
         .map { it.optString("spreadsheet", "") }
 
-    suspend fun upsertDocument(url: String, token: String, doc: ExtractedDocumentEntity): Result<Unit> {
-        val d = JSONObject().apply {
+    suspend fun upsertDocument(url: String, token: String, doc: ExtractedDocumentEntity): Result<Unit> =
+        post(url, token, JSONObject().put("action", "upsertDocument").put("document", documentJson(doc))).map { }
+
+    /** Moves the document's row from "Accounting" to "Voided" (needs the Apps Script from app version 1.2+). */
+    suspend fun voidDocument(url: String, token: String, doc: ExtractedDocumentEntity): Result<Unit> =
+        post(url, token, JSONObject().put("action", "voidDocument").put("document", documentJson(doc))).map { }
+
+    private fun documentJson(doc: ExtractedDocumentEntity): JSONObject {
+        val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+        return JSONObject().apply {
             put("app_id", "DOC-${doc.id}")
             put("status", doc.status)
             put("date", doc.date ?: JSONObject.NULL)
@@ -46,10 +54,13 @@ class SheetsClient {
             put("total_amount", doc.totalAmount ?: JSONObject.NULL)
             put("deposit_amount", doc.depositAmount ?: JSONObject.NULL)
             put("payment_method", doc.paymentMethod ?: JSONObject.NULL)
-            put("verified_at", doc.verifiedAt?.let { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(it)) } ?: JSONObject.NULL)
+            put("verified_at", doc.verifiedAt?.let { stamp.format(java.util.Date(it)) } ?: JSONObject.NULL)
             put("source", if (doc.sourceFilePath != null) "file" else "camera")
+            if (doc.voidedAt != null) {
+                put("void_reason", doc.voidReason ?: "")
+                put("voided_at", stamp.format(java.util.Date(doc.voidedAt)))
+            }
         }
-        return post(url, token, JSONObject().put("action", "upsertDocument").put("document", d)).map { }
     }
 
     /** [reportJson] is the AI JSON of an eZee report. */

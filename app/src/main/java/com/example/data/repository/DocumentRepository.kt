@@ -3,6 +3,9 @@ package com.example.data.repository
 import com.example.data.local.DocumentDao
 import com.example.data.local.DocumentImageStore
 import com.example.data.local.ExtractedDocumentEntity
+import com.example.data.local.canDelete
+import com.example.data.local.canVoid
+import com.example.data.local.documentStatus
 import com.example.data.model.AccountingDocumentJson
 import com.example.data.model.DocumentStatus
 import kotlinx.coroutines.flow.Flow
@@ -28,10 +31,12 @@ class DocumentRepository(
         document: AccountingDocumentJson,
         rawJson: String,
         imagePath: String?,
-        sourceFilePath: String? = null
+        sourceFilePath: String? = null,
+        contentHash: String? = null
     ): Long {
         val entity = ExtractedDocumentEntity.fromModel(
-            document, rawJson, sampleId = null, imagePath = imagePath, sourceFilePath = sourceFilePath
+            document, rawJson, sampleId = null, imagePath = imagePath, sourceFilePath = sourceFilePath,
+            contentHash = contentHash
         )
         return documentDao.insertDocument(entity)
     }
@@ -66,16 +71,39 @@ class DocumentRepository(
         )
     }
 
+    /**
+     * Moves a document back to PENDING / REJECTED. A voided document stays voided.
+     * [ExtractedDocumentEntity.verifiedAt] is kept on purpose: it records that the document was counted once,
+     * so it can only be voided later, never deleted.
+     */
     suspend fun setStatus(id: Long, status: DocumentStatus) {
+        require(status != DocumentStatus.VOIDED) { "use voidDocument()" }
         val current = documentDao.getDocumentById(id) ?: return
-        documentDao.updateDocument(
-            current.copy(
-                status = status.code,
-                verifiedAt = if (status == DocumentStatus.VERIFIED) current.verifiedAt else null,
-                updatedAt = System.currentTimeMillis()
-            )
-        )
+        if (current.documentStatus() == DocumentStatus.VOIDED) return
+        documentDao.updateDocument(current.copy(status = status.code, updatedAt = System.currentTimeMillis()))
     }
+
+    /** Cancels a counted document with a reason. The row, image and original file are kept as a record. */
+    suspend fun voidDocument(id: Long, reason: String): ExtractedDocumentEntity? {
+        val current = documentDao.getDocumentById(id) ?: return null
+        require(current.canVoid()) { "เอกสารนี้ยกเลิกไม่ได้" }
+        require(reason.isNotBlank()) { "ต้องใส่เหตุผล" }
+        val now = System.currentTimeMillis()
+        val voided = current.copy(
+            status = DocumentStatus.VOIDED.code,
+            voidReason = reason.trim(),
+            voidedAt = now,
+            updatedAt = now
+        )
+        documentDao.updateDocument(voided)
+        return voided
+    }
+
+    suspend fun getAllOnce(): List<ExtractedDocumentEntity> = documentDao.getAllOnce()
+
+    suspend fun getByContentHash(hash: String): List<ExtractedDocumentEntity> = documentDao.getByContentHash(hash)
+
+    suspend fun getVoidedNotSynced(): List<ExtractedDocumentEntity> = documentDao.getVoidedNotSynced()
 
     suspend fun saveImage(bitmap: android.graphics.Bitmap): String = imageStore.save(bitmap)
 
@@ -89,16 +117,17 @@ class DocumentRepository(
 
     suspend fun markSheetSynced(id: Long) = documentDao.markSheetSynced(id, System.currentTimeMillis())
 
+    /** Deletes a document that was never counted. Counted documents must be voided instead. */
     suspend fun deleteDocument(id: Long) {
         val entity = documentDao.getDocumentById(id)
+        check(entity == null || entity.canDelete()) { "เอกสารที่ยืนยันแล้วลบไม่ได้ ให้ใช้ \"ยกเลิกรายการ\"" }
         documentDao.deleteById(id)
         imageStore.delete(entity?.imagePath)
         imageStore.delete(entity?.sourceFilePath)
     }
 
+    /** Deletes every document that was never counted (counted ones are kept). */
     suspend fun deleteAllDocuments() {
-        val paths = documentDao.getAllImagePaths() + documentDao.getAllSourceFilePaths()
-        documentDao.deleteAll()
-        paths.forEach { imageStore.delete(it) }
+        documentDao.getAllOnce().filter { it.canDelete() }.forEach { deleteDocument(it.id) }
     }
 }

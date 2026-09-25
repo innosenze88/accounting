@@ -52,6 +52,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.util.ReportPeriod
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,7 +89,12 @@ fun DashboardScreen(
     val allDocuments by viewModel.historyList.collectAsStateWithLifecycle()
     // Every figure on the dashboard is built ONLY from real documents a person has verified.
     // Samples and PENDING/REJECTED documents are never counted.
-    val historyList = remember(allDocuments) { allDocuments.filter { it.countsInAccounting() } }
+    var period by rememberSaveable { mutableStateOf(ReportPeriod.THIS_MONTH) }
+    // Recomputed whenever the data changes, so the dashboard follows the calendar day.
+    val today = remember(allDocuments) { ReportPeriod.today() }
+    val historyList = remember(allDocuments, period, today) {
+        allDocuments.filter { it.countsInAccounting() && period.contains(it.date, it.createdAt, today) }
+    }
     val pendingCount = remember(allDocuments) {
         allDocuments.count { it.sampleId == null && it.documentStatus() == DocumentStatus.PENDING }
     }
@@ -206,7 +214,7 @@ fun DashboardScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "สรุปยอดรายรับ-รายจ่าย ภาษี และสถิติเอกสาร",
+                        text = "ช่วงเวลา: ${ReportPeriod.label(period, today)} • ตามวันที่บนเอกสาร",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -234,6 +242,25 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
+                }
+            }
+        }
+
+        // Period filter: today / this month / last month / all
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("dashboard_period_filter"),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ReportPeriod.entries.forEach { p ->
+                    FilterChip(
+                        selected = period == p,
+                        onClick = { period = p },
+                        label = { Text(p.titleTh, fontSize = 13.sp) },
+                        modifier = Modifier.testTag("period_${p.name}")
+                    )
                 }
             }
         }
