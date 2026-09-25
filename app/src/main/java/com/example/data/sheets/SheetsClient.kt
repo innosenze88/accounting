@@ -17,6 +17,11 @@ import java.util.concurrent.TimeUnit
  */
 class SheetsClient {
 
+    companion object {
+        /** Apps Script accepts requests up to about 50 MB; base64 adds a third. */
+        const val MAX_BACKUP_UPLOAD = 30L * 1024 * 1024
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
@@ -62,6 +67,50 @@ class SheetsClient {
             }
         }
     }
+
+    /** Uploads a backup zip to the "Resort Accounting Backups" folder in Google Drive (keeps the newest [keep]). */
+    suspend fun saveBackup(url: String, token: String, file: java.io.File, keep: Int = 7): Result<String> {
+        if (file.length() > MAX_BACKUP_UPLOAD) {
+            return Result.failure(
+                IllegalStateException("ไฟล์สำรองใหญ่เกินจะส่งขึ้น Drive ผ่าน Apps Script (${file.length() / 1_048_576} MB) — ใช้ \"บันทึกเป็นไฟล์\" แล้วเลือก Google Drive แทน")
+            )
+        }
+        val body = JSONObject()
+            .put("action", "saveBackup")
+            .put("name", file.name)
+            .put("keep", keep)
+            .put("data", android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.NO_WRAP))
+        return post(url, token, body).map { it.optString("url") }
+    }
+
+    /** A slip / receipt sent to the LINE group, waiting in the "LineInbox" sheet. */
+    data class LineItem(val id: String, val receivedAt: String, val sender: String, val fileId: String, val fileName: String, val mime: String)
+
+    suspend fun listLineInbox(url: String, token: String, limit: Int = 30): Result<List<LineItem>> =
+        post(url, token, JSONObject().put("action", "listLineInbox").put("limit", limit)).map { json ->
+            val arr = json.optJSONArray("items") ?: org.json.JSONArray()
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                LineItem(
+                    id = o.optString("id"), receivedAt = o.optString("received_at"), sender = o.optString("sender_name"),
+                    fileId = o.optString("file_id"), fileName = o.optString("file_name"), mime = o.optString("mime")
+                )
+            }.filter { it.id.isNotBlank() && it.fileId.isNotBlank() }
+        }
+
+    /** Downloads one LINE slip file (bytes) from Google Drive through the Apps Script. */
+    suspend fun getLineFile(url: String, token: String, fileId: String): Result<ByteArray> =
+        post(url, token, JSONObject().put("action", "getLineFile").put("fileId", fileId)).map {
+            android.util.Base64.decode(it.optString("data"), android.util.Base64.DEFAULT)
+        }
+
+    /** status = IMPORTED / DUPLICATE / FAILED */
+    suspend fun markLineImported(url: String, token: String, id: String, status: String, docId: Long?, note: String?): Result<Unit> =
+        post(
+            url, token,
+            JSONObject().put("action", "markLineImported").put("id", id).put("status", status)
+                .put("docId", docId ?: JSONObject.NULL).put("note", note ?: "")
+        ).map { }
 
     /** [reportJson] is the AI JSON of an eZee report. */
     suspend fun upsertReport(url: String, token: String, appId: String, fileName: String, reportJson: JSONObject): Result<Int> {

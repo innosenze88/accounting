@@ -18,8 +18,8 @@ android {
     minSdk = 24
     targetSdk = 36
     // In-app update: every new GitHub Release needs a HIGHER versionCode and a matching tag "v<versionName>".
-    versionCode = 3
-    versionName = "1.2.0"
+    versionCode = 4
+    versionName = "1.3.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -124,6 +124,8 @@ dependencies {
   implementation(libs.okhttp)
   // Reads the text of eZee PDF reports on the phone (no AI needed)
   implementation(libs.pdfbox.android)
+  // QR codes for PromptPay payments
+  implementation(libs.zxing.core)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

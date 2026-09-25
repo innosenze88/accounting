@@ -1,0 +1,254 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 4,
+    "identityHash": "d8dcaef8cf7c32fe962db85e770bf5fc",
+    "entities": [
+      {
+        "tableName": "extracted_documents",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `documentType` TEXT NOT NULL, `transactionType` TEXT NOT NULL, `documentNo` TEXT, `date` TEXT, `sellerName` TEXT, `sellerTaxId` TEXT, `customerName` TEXT, `customerTaxId` TEXT, `subtotal` REAL, `vatAmount` REAL, `totalAmount` REAL, `depositAmount` REAL, `paymentMethod` TEXT, `lineItemsJson` TEXT NOT NULL, `rawJson` TEXT NOT NULL, `sampleId` TEXT, `createdAt` INTEGER NOT NULL, `status` TEXT NOT NULL, `imagePath` TEXT, `verifiedAt` INTEGER, `updatedAt` INTEGER, `sourceFilePath` TEXT, `sheetSyncedAt` INTEGER, `voidReason` TEXT, `voidedAt` INTEGER, `contentHash` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentType",
+            "columnName": "documentType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transactionType",
+            "columnName": "transactionType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentNo",
+            "columnName": "documentNo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sellerName",
+            "columnName": "sellerName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sellerTaxId",
+            "columnName": "sellerTaxId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "customerName",
+            "columnName": "customerName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "customerTaxId",
+            "columnName": "customerTaxId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subtotal",
+            "columnName": "subtotal",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "vatAmount",
+            "columnName": "vatAmount",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "totalAmount",
+            "columnName": "totalAmount",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "depositAmount",
+            "columnName": "depositAmount",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "paymentMethod",
+            "columnName": "paymentMethod",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lineItemsJson",
+            "columnName": "lineItemsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawJson",
+            "columnName": "rawJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sampleId",
+            "columnName": "sampleId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imagePath",
+            "columnName": "imagePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "verifiedAt",
+            "columnName": "verifiedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourceFilePath",
+            "columnName": "sourceFilePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sheetSyncedAt",
+            "columnName": "sheetSyncedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "voidReason",
+            "columnName": "voidReason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "voidedAt",
+            "columnName": "voidedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "contentHash",
+            "columnName": "contentHash",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "imported_files",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, `fileName` TEXT NOT NULL, `mimeType` TEXT, `storedPath` TEXT, `reportType` TEXT, `reportDate` TEXT, `extractedJson` TEXT, `rowCount` INTEGER, `targetSheet` TEXT, `status` TEXT NOT NULL, `errorMessage` TEXT, `sheetSyncedAt` INTEGER, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "fileName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mimeType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "storedPath",
+            "columnName": "storedPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reportType",
+            "columnName": "reportType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reportDate",
+            "columnName": "reportDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "extractedJson",
+            "columnName": "extractedJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rowCount",
+            "columnName": "rowCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "targetSheet",
+            "columnName": "targetSheet",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "errorMessage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sheetSyncedAt",
+            "columnName": "sheetSyncedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd8dcaef8cf7c32fe962db85e770bf5fc')"
+    ]
+  }
+}

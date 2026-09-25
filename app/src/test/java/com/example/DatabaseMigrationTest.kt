@@ -5,6 +5,11 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.AppDatabase
+import com.example.data.booking.BookingEntity
+import com.example.data.booking.DayCloseEntity
+import com.example.data.booking.WalletEntity
+import com.example.data.booking.WalletTxnEntity
+import com.example.data.docs.IssuedDocumentEntity
 import com.example.data.local.ExtractedDocumentEntity
 import com.example.data.local.ImportedFileEntity
 import com.example.data.local.countsInAccounting
@@ -42,7 +47,7 @@ class DatabaseMigrationTest {
     """.trimIndent()
 
     @Test
-    fun `migration 1 to 4 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
+    fun `migration 1 to 5 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
         val name = "migration_test.db"
         context.deleteDatabase(name)
 
@@ -87,6 +92,21 @@ class DatabaseMigrationTest {
             )
         )
         assertEquals("a.csv", roomDb.importedFileDao().getById(importId)?.fileName)
+
+        // v5 tables (bookings, wallets, day close, issued documents) exist and work
+        val walletId = roomDb.walletDao().insertWallet(WalletEntity(name = "ทดสอบ", role = "SAVINGS", percent = 100.0))
+        roomDb.walletDao().insertTxns(listOf(WalletTxnEntity(walletId = walletId, amount = 10.0, kind = "ALLOCATION", date = "2026-09-25", sourceType = "MANUAL")))
+        assertEquals(1, roomDb.walletDao().getAllTxns().size)
+        val bookingId = roomDb.bookingDao().insertBooking(
+            BookingEntity(guestName = "ลูกค้าทดสอบ", roomNo = "1", checkIn = "2026-09-25", checkOut = "2026-09-26", nightlyRate = 800.0, totalAmount = 800.0)
+        )
+        assertEquals("ลูกค้าทดสอบ", roomDb.bookingDao().getBooking(bookingId)?.guestName)
+        roomDb.walletDao().insertDayClose(DayCloseEntity(date = "2026-09-25", closedAt = 1L))
+        assertNotNull(roomDb.walletDao().getDayClose("2026-09-25"))
+        val docId = roomDb.issuedDocDao().insert(
+            IssuedDocumentEntity(type = "RECEIPT", number = "RC2609-0001", issueDate = "2026-09-25", customerName = "ก", itemsJson = "{}", subtotal = 1.0, vatAmount = 0.0, total = 1.0)
+        )
+        assertEquals("RC2609-0001", roomDb.issuedDocDao().get(docId)?.number)
 
         roomDb.close()
         context.deleteDatabase(name)

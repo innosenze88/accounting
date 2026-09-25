@@ -1127,6 +1127,99 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    // ================================================================ LINE slips (LINE OA -> Apps Script -> Drive)
+
+    /**
+     * Pulls slips/receipts that were sent to the resort's LINE OA (saved in Drive by the Apps Script),
+     * reads each one with AI and saves it as PENDING (needs approval, like any other upload).
+     * Files already in the app (same content) are marked DUPLICATE and skipped.
+     */
+    fun pullLineSlips() {
+        if (_isImportBusy.value) {
+            _importMessage.value = "✕ กำลังทำงานอยู่ รอให้เสร็จก่อน"
+            return
+        }
+        val settings = settingsRepository.settings.value
+        if (settings.sheetsWebAppUrl.isBlank() || settings.sheetsToken.isBlank()) {
+            _importMessage.value = "✕ ต้องตั้งค่า Google Sheets (Apps Script) ก่อน — ดูวิธีตั้ง LINE ใน LINE_SETUP.md"
+            return
+        }
+        val provider = resolveProvider(settings)
+        if (provider == null) {
+            _importMessage.value = "✕ ยังไม่ได้ใส่ API key (แท็บ \"ตั้งค่า\")"
+            return
+        }
+        clearPendingImport()
+        _importMessage.value = "กำลังดึงรายการจาก LINE..."
+        viewModelScope.launch {
+            _isImportBusy.value = true
+            try {
+                val url = settings.sheetsWebAppUrl
+                val token = settings.sheetsToken
+                val list = sheetsClient.listLineInbox(url, token).getOrElse { e ->
+                    _importMessage.value = "✕ ดึงจาก LINE ไม่สำเร็จ: ${sheetsErrorText(e)}"
+                    return@launch
+                }
+                if (list.isEmpty()) {
+                    _importMessage.value = "ไม่มีสลิปใหม่ใน LINE"
+                    return@launch
+                }
+                _batchItems.value = list.mapIndexed { i, item ->
+                    BatchItem(i, "LINE: ${item.fileName.ifBlank { "ไฟล์" }} (${item.sender.ifBlank { "?" }})", BatchState.WAITING)
+                }
+                for ((i, item) in list.withIndex()) {
+                    updateBatch(i) { it.copy(state = BatchState.READING) }
+                    val bytes = sheetsClient.getLineFile(url, token, item.fileId).getOrElse { e ->
+                        updateBatch(i) { it.copy(state = BatchState.FAILED, message = "โหลดไฟล์ไม่ได้: ${e.localizedMessage}") }
+                        continue
+                    }
+                    val kind = when {
+                        item.mime.startsWith("image/") -> FileKind.IMAGE
+                        item.mime == "application/pdf" -> FileKind.PDF
+                        else -> FileKind.UNSUPPORTED
+                    }
+                    if (kind == FileKind.UNSUPPORTED) {
+                        updateBatch(i) { it.copy(state = BatchState.SKIPPED, message = "ไม่รองรับไฟล์ ${item.mime}") }
+                        sheetsClient.markLineImported(url, token, item.id, "FAILED", null, "unsupported ${item.mime}")
+                        continue
+                    }
+                    val ext = if (kind == FileKind.PDF) "pdf" else "jpg"
+                    val name = item.fileName.ifBlank { "line-${item.id}.$ext" }
+                    val file = PickedFile(name, item.mime, kind, bytes)
+                    val same = findSameFile(ContentHash.sha256(bytes))
+                    if (same != null) {
+                        updateBatch(i) { it.copy(state = BatchState.SKIPPED, message = "ไฟล์ซ้ำ — ${describeDocument(same)}") }
+                        sheetsClient.markLineImported(url, token, item.id, "DUPLICATE", same.id, null)
+                        continue
+                    }
+                    readBatchDocument(file, provider).fold(
+                        onSuccess = { id ->
+                            updateBatch(i) { it.copy(state = BatchState.DOCUMENT, documentId = id) }
+                            sheetsClient.markLineImported(url, token, item.id, "IMPORTED", id, null)
+                        },
+                        onFailure = { e ->
+                            updateBatch(i) { it.copy(state = BatchState.FAILED, message = e.localizedMessage ?: "อ่านไม่สำเร็จ") }
+                            // Marked FAILED so it is not retried forever; the file stays in Drive to add by hand.
+                            sheetsClient.markLineImported(url, token, item.id, "FAILED", null, e.localizedMessage)
+                        }
+                    )
+                }
+                val items = _batchItems.value
+                val docs = items.count { it.state == BatchState.DOCUMENT }
+                val dup = items.count { it.state == BatchState.SKIPPED }
+                val failed = items.count { it.state == BatchState.FAILED }
+                _importMessage.value = (if (failed > 0) "✕ " else "✓ ") +
+                    "ดึงจาก LINE ${items.size} ไฟล์ — รอยืนยัน $docs ใบ" +
+                    (if (dup > 0) ", ข้าม $dup" else "") +
+                    (if (failed > 0) ", ไม่สำเร็จ $failed (ไฟล์ยังอยู่ในโฟลเดอร์ LINE Slips ใน Drive)" else "")
+            } catch (e: Exception) {
+                _importMessage.value = "✕ ${e.localizedMessage ?: "ดึงจาก LINE ไม่สำเร็จ"}"
+            } finally {
+                _isImportBusy.value = false
+            }
+        }
+    }
+
     // ================================================================ In-app update from GitHub Releases
 
     sealed interface UpdateState {
