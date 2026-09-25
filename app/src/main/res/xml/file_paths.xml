@@ -2,4 +2,10 @@
 <paths>
     <!-- Downloaded update APK (AppUpdater) -->
     <cache-path name="updates" path="updates/" />
+    <!-- Backup zip to share (BackupManager) -->
+    <cache-path name="backups" path="backups/" />
+    <!-- PDF documents issued by the resort (receipts, invoices...) -->
+    <files-path name="issued" path="issued_documents/" />
+    <!-- Temporary PDFs made for sharing -->
+    <cache-path name="share" path="share/" />
 </paths>

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
@@ -44,6 +45,9 @@ import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.ImportScreen
 import com.example.ui.screens.ScannerScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.booking.BookingScreen
+import com.example.ui.viewmodel.BookingViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AccountantViewModel
 
@@ -134,6 +138,7 @@ fun MainAppScreen(
                             1 -> "AI Accountant OCR"
                             2 -> "ประวัติเอกสารบัญชี"
                             3 -> "นำเข้าไฟล์ (PDF / CSV / Excel)"
+                            5 -> "จองตรง & กระเป๋าเงิน"
                             else -> "ตั้งค่า & อัปเดต"
                         },
                         fontSize = 18.sp,
@@ -156,6 +161,13 @@ fun MainAppScreen(
                     icon = { Icon(Icons.Default.Dashboard, contentDescription = "แดชบอร์ด") },
                     label = { Text("แดชบอร์ด", fontSize = 11.sp) },
                     modifier = Modifier.testTag("nav_item_dashboard")
+                )
+                NavigationBarItem(
+                    selected = currentTab == 5,
+                    onClick = { currentTab = 5 },
+                    icon = { Icon(Icons.Default.Hotel, contentDescription = "จอง/กระเป๋า") },
+                    label = { Text("จอง", fontSize = 11.sp) },
+                    modifier = Modifier.testTag("nav_item_booking")
                 )
                 NavigationBarItem(
                     selected = currentTab == 1,
@@ -197,12 +209,15 @@ fun MainAppScreen(
                 0 -> DashboardScreen(
                     viewModel = viewModel,
                     onNavigateToScan = { currentTab = 1 },
-                    onNavigateToHistory = { currentTab = 2 }
+                    onNavigateToHistory = { currentTab = 2 },
+                    onNavigateToSettings = { currentTab = 4 },
+                    onNavigateToBooking = { currentTab = 5 }
                 )
                 1 -> ScannerScreen(viewModel = viewModel)
                 2 -> HistoryScreen(viewModel = viewModel, onNavigateToScan = { currentTab = 1 })
                 3 -> ImportScreen(viewModel = viewModel, onGoToScanner = { currentTab = 1 })
                 4 -> SettingsScreen(viewModel = viewModel)
+                5 -> BookingScreen(composeViewModel<BookingViewModel>())
             }
         }
     }

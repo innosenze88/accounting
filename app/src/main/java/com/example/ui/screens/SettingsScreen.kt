@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BackupCard
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -62,6 +64,7 @@ import com.example.data.settings.AiSettings
 import com.example.data.settings.AiSettingsRepository
 import com.example.ui.components.UpdateCard
 import com.example.ui.viewmodel.AccountantViewModel
+import com.example.ui.viewmodel.BackupViewModel
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -92,6 +95,7 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         UpdateCard(viewModel)
+        BackupCard(composeViewModel<BackupViewModel>())
 
         Text("AI ที่ใช้อ่านเอกสาร", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -16,6 +16,7 @@ roomRuntime = "2.7.0"
 roomKtx = "2.7.0"
 roomCompiler = "2.7.0"
 pdfboxAndroid = "2.0.27.0"
+zxingCore = "3.5.3"
 kotlinxCoroutinesTest = "1.10.2"
 core = "1.6.1"
 runner = "1.6.2"
@@ -45,6 +46,7 @@ googleid = "1.1.1"
 
 
 [libraries]
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxingCore" }
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

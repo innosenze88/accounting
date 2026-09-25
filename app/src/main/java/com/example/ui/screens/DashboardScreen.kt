@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BackupReminder
+import com.example.ui.components.FinanceOverviewCard
+import com.example.ui.viewmodel.BookingViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -78,12 +82,15 @@ import com.example.ui.components.ExtractedDocumentCard
 import com.example.ui.components.JsonViewer
 import com.example.ui.components.TransactionTypeBadge
 import com.example.ui.viewmodel.AccountantViewModel
+import com.example.ui.viewmodel.BackupViewModel
 
 @Composable
 fun DashboardScreen(
     viewModel: AccountantViewModel,
     onNavigateToScan: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToBooking: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val allDocuments by viewModel.historyList.collectAsStateWithLifecycle()
@@ -265,6 +272,20 @@ fun DashboardScreen(
             }
         }
 
+        item {
+            BackupReminder(vm = composeViewModel<BackupViewModel>(), onOpenSettings = onNavigateToSettings)
+        }
+
+        item {
+            FinanceOverviewCard(
+                vm = composeViewModel<BookingViewModel>(),
+                documents = allDocuments,
+                period = period,
+                today = today,
+                onOpenWallets = onNavigateToBooking
+            )
+        }
+
         // Quick Action Bar
         item {
             Row(
@@ -296,6 +317,15 @@ fun DashboardScreen(
                     Text("ประวัติทั้งหมด", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
+        }
+
+        item {
+            Text(
+                text = "รายละเอียดจากเอกสารที่สแกน (สลิป / ใบเสร็จ / บิล ที่ยืนยันแล้ว)",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
 
         // Net Cash Flow Card

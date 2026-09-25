@@ -159,6 +159,16 @@ fun ImportScreen(
                     Spacer(Modifier.width(6.dp))
                     Text("เลือกไฟล์ (ได้หลายไฟล์)")
                 }
+                OutlinedButton(
+                    onClick = { viewModel.pullLineSlips() },
+                    enabled = !busy,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("import_line_button")
+                ) {
+                    Text("ดึงสลิปจาก LINE (ที่ส่งเข้า LINE OA ของรีสอร์ท)")
+                }
                 Text(
                     "ยอดในแดชบอร์ดนับเฉพาะสลิป/ใบเสร็จที่กด \"ยืนยัน\" แล้ว และรายงาน eZee ที่เลือก \"นับเข้ายอด\" ตอนบันทึก — ตาราง CSV/Excel ไม่นับรวมในยอด",
                     fontSize = 11.sp,
