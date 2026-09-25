@@ -86,7 +86,9 @@ fun FinanceOverviewCard(
             closedDays = closes.map { it.date }.toSet(),
             period = period,
             today = today,
-            profitWalletIds = business.profitWalletIds
+            profitWalletIds = business.profitWalletIds,
+            // Slips attached to a booking payment are already counted by the booking.
+            linkedSlipIds = com.example.data.booking.BookingRules.linkedSlipIds(bookings.flatMap { it.payments })
         )
     }
     val pendingTransfers = walletViews.count { kotlin.math.abs(it.toTransfer) >= 0.005 }

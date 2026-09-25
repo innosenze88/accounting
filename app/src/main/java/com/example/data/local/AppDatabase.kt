@@ -12,6 +12,7 @@ import com.example.data.booking.BookingPaymentEntity
 import com.example.data.booking.DayCloseEntity
 import com.example.data.booking.WalletDao
 import com.example.data.booking.WalletEntity
+import com.example.data.booking.WalletPercentChangeEntity
 import com.example.data.booking.WalletTxnEntity
 import com.example.data.docs.DocSequenceEntity
 import com.example.data.docs.IssuedDocDao
@@ -21,9 +22,10 @@ import com.example.data.docs.IssuedDocumentEntity
     entities = [
         ExtractedDocumentEntity::class, ImportedFileEntity::class,
         BookingEntity::class, BookingPaymentEntity::class, WalletEntity::class, WalletTxnEntity::class,
-        DayCloseEntity::class, IssuedDocumentEntity::class, DocSequenceEntity::class
+        DayCloseEntity::class, IssuedDocumentEntity::class, DocSequenceEntity::class,
+        WalletPercentChangeEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -133,8 +135,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v5 -> v6: history of wallet % changes (why and when a wallet's share was raised or lowered). */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `wallet_percent_changes` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `changedAt` INTEGER NOT NULL, " +
+                        "`reason` TEXT NOT NULL, `summary` TEXT NOT NULL, `beforePercents` TEXT NOT NULL, `afterPercents` TEXT NOT NULL)"
+                )
+            }
+        }
+
         /** Every future schema change must add its Migration here. Never use destructive migration. */
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
         /**
          * Closes the database so its file can be replaced (restore from a backup).

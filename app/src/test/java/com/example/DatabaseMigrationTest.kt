@@ -47,7 +47,7 @@ class DatabaseMigrationTest {
     """.trimIndent()
 
     @Test
-    fun `migration 1 to 5 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
+    fun `migration 1 to 6 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
         val name = "migration_test.db"
         context.deleteDatabase(name)
 
@@ -107,6 +107,13 @@ class DatabaseMigrationTest {
             IssuedDocumentEntity(type = "RECEIPT", number = "RC2609-0001", issueDate = "2026-09-25", customerName = "ก", itemsJson = "{}", subtotal = 1.0, vatAmount = 0.0, total = 1.0)
         )
         assertEquals("RC2609-0001", roomDb.issuedDocDao().get(docId)?.number)
+
+        // v6 table (history of wallet % changes) exists and works
+        roomDb.walletDao().insertPercentChange(
+            com.example.data.booking.WalletPercentChangeEntity(
+                reason = "ค่าไฟสูง", summary = "ค่าน้ำ-ค่าไฟ 10→15%", beforePercents = "3=10.0", afterPercents = "3=15.0"
+            )
+        )
 
         roomDb.close()
         context.deleteDatabase(name)

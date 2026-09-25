@@ -78,6 +78,46 @@ class BookingRulesTest {
     }
 
     @Test
+    fun cancellationAfterBalancePaidRefundsPercentOfEverythingPaid() {
+        // Paid in full (1,000 deposit + 2,000 balance), then cancels: 50 % of 3,000 goes back.
+        val deposit = pay(1, PaymentKind.DEPOSIT, 1000.0)
+        val balance = pay(2, PaymentKind.BALANCE, 2000.0)
+        val before = BookingRules.onPayment(setup, deposit, booking) + BookingRules.onPayment(setup, balance, booking)
+        val c = BookingRules.cancel(setup, booking, listOf(deposit, balance), "2026-09-25", 50.0)
+        assertEquals(3000.0, c.paid, 0.0)
+        assertEquals(1500.0, c.refund, 0.0)
+        assertEquals(1500.0, c.kept, 0.0)
+        val bal = BookingRules.balances(before + c.txns)
+        assertEquals(0.0, bal[advanceId] ?: 0.0, 0.0)
+        // Only what the resort keeps stays in the wallets; 2,000 was split before, 500 comes back out.
+        assertEquals(1500.0, bal.filterKeys { it != advanceId }.values.sum(), 1e-9)
+        assertEquals(450.0, bal[2L]!!, 1e-9) // salary wallet 30 % of 1,500
+    }
+
+    @Test
+    fun cancellationWithOnlyBalanceAndFullRefundTakesItAllBack() {
+        val balance = pay(2, PaymentKind.BALANCE, 2000.0)
+        val before = BookingRules.onPayment(setup, balance, booking)
+        val c = BookingRules.cancel(setup, booking, listOf(balance), "2026-09-25", 100.0)
+        assertEquals(2000.0, c.refund, 0.0)
+        val bal = BookingRules.balances(before + c.txns)
+        bal.values.forEach { assertEquals(0.0, it, 1e-9) }
+    }
+
+    @Test
+    fun cancellationWithSmallRefundAddsIncome() {
+        // Deposit 1,000 + balance 1,000, refund 20 % = 400 -> kept 1,600 (1,000 already split, 600 more now).
+        val deposit = pay(1, PaymentKind.DEPOSIT, 1000.0)
+        val balance = pay(2, PaymentKind.BALANCE, 1000.0)
+        val before = BookingRules.onPayment(setup, deposit, booking) + BookingRules.onPayment(setup, balance, booking)
+        val c = BookingRules.cancel(setup, booking, listOf(deposit, balance), "2026-09-25", 20.0)
+        assertEquals(400.0, c.refund, 0.0)
+        val bal = BookingRules.balances(before + c.txns)
+        assertEquals(1600.0, bal.filterKeys { it != advanceId }.values.sum(), 1e-9)
+        assertEquals(0.0, bal[advanceId] ?: 0.0, 0.0)
+    }
+
+    @Test
     fun cannotSettleTwice() {
         val settled = booking.copy(settledAt = 1L, status = BookingStatus.CHECKED_OUT.code)
         val e = runCatching { BookingRules.checkOut(setup, settled, emptyList(), "2026-10-02") }.exceptionOrNull()

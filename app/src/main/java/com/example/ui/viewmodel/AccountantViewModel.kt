@@ -1440,7 +1440,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                 val settings = settingsRepository.settings.value
                 for (id in ids) {
                     val entity = repository.getDocumentById(id)
-                    if (entity == null || entity.quickVerifyProblem() != null) {
+                    if (entity == null || entity.documentStatus() != DocumentStatus.PENDING || entity.quickVerifyProblem() != null) {
                         skipped++
                         continue
                     }

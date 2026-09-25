@@ -42,7 +42,7 @@ class BackupManager(private val context: Context) {
         const val FORMAT = "resort-accounting-backup"
         const val DB_NAME = "accounting_ocr.db"
         /** Database version this app writes (must match AppDatabase). */
-        const val DB_VERSION = 5
+        const val DB_VERSION = 6
         private const val MANIFEST = "manifest.json"
         private const val DB_ENTRY = "database/$DB_NAME"
         private const val FILES_PREFIX = "files/"

@@ -24,6 +24,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -380,7 +381,11 @@ private fun PaymentDialog(v: BookingView, initialKind: PaymentKind, vm: BookingV
     var date by remember { mutableStateOf(ReportPeriod.today()) }
     var note by remember { mutableStateOf("") }
     var showQr by remember { mutableStateOf(false) }
+    var slipId by remember { mutableStateOf<Long?>(null) }
     val value = parseMoney(amount)
+    val allSlips by vm.slipOptions.collectAsStateWithLifecycle()
+    val linked by vm.linkedSlipIds.collectAsStateWithLifecycle()
+    val slips = remember(allSlips, linked, value, date) { BookingRules.slipChoices(allSlips, linked, value, date) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -397,6 +402,36 @@ private fun PaymentDialog(v: BookingView, initialKind: PaymentKind, vm: BookingV
                 MoneyField("จำนวนเงิน", amount, { amount = it })
                 DateField("วันที่รับเงิน", date, { date = it }, Modifier.fillMaxWidth())
                 TextInput("หมายเหตุ (เช่น ธนาคาร/เลขสลิป)", note, { note = it })
+                if (method != PaymentMethod.CASH && slips.isNotEmpty()) {
+                    // A slip scanned/pulled from LINE is also an income document: attach it here so it is counted once.
+                    Text("แนบสลิปที่สแกน/ดึงจาก LINE แล้ว (กันนับรายได้ซ้ำ)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = slipId == null, onClick = { slipId = null })
+                            Text("ไม่แนบ", fontSize = 12.sp)
+                        }
+                        slips.forEach { o ->
+                            val likely = BookingRules.isLikelySlip(o, value, date)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = slipId == o.documentId, onClick = {
+                                    slipId = o.documentId
+                                    if (value == null || value <= 0.0) o.amount?.let { amount = baht(it) }
+                                })
+                                Text(
+                                    o.label + if (likely) "  ← น่าจะใช่" else "",
+                                    fontSize = 12.sp,
+                                    color = if (likely) Green else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                    if (slipId == null && slips.any { BookingRules.isLikelySlip(it, value, date) }) {
+                        Text(
+                            "⚠ มีสลิปยอดเดียวกันอยู่แล้ว ถ้าเป็นเงินก้อนเดียวกันให้แนบ ไม่งั้นรายได้จะถูกนับ 2 ครั้ง",
+                            fontSize = 12.sp, color = Orange
+                        )
+                    }
+                }
                 if (method == PaymentMethod.PROMPTPAY) {
                     val payload = vm.promptPayPayload(value)
                     if (payload == null) Text("ใส่เลขพร้อมเพย์ในแท็บเอกสาร → ข้อมูลรีสอร์ท ก่อน", fontSize = 12.sp, color = Orange)
@@ -406,7 +441,13 @@ private fun PaymentDialog(v: BookingView, initialKind: PaymentKind, vm: BookingV
         },
         confirmButton = {
             TextButton(
-                onClick = { vm.addPayment(v.booking.id, kind, method, value ?: 0.0, date, note.ifBlank { null }); onDismiss() },
+                onClick = {
+                    vm.addPayment(
+                        v.booking.id, kind, method, value ?: 0.0, date, note.ifBlank { null },
+                        slipId.takeIf { method != PaymentMethod.CASH }
+                    )
+                    onDismiss()
+                },
                 enabled = (value ?: 0.0) > 0
             ) { Text("บันทึกรับเงิน") }
         },
@@ -422,15 +463,18 @@ private fun CancelBookingDialog(v: BookingView, refundPercent: Double, vm: Booki
     var method by remember { mutableStateOf(PaymentMethod.TRANSFER) }
     var reason by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(ReportPeriod.today()) }
-    val deposit = v.money.deposits
-    val (refund, kept) = WalletMath.cancellationSplit(deposit, refundPercent)
+    val (paid, refund, kept) = BookingRules.cancellationPreview(v.money, refundPercent)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("ยกเลิกการจอง ${v.booking.guestName}?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("มัดจำที่รับไว้ ${baht(deposit)} บาท", fontSize = 13.sp)
+                Text("มัดจำที่รับไว้ ${baht(v.money.deposits)} บาท", fontSize = 13.sp)
+                if (v.money.balancePaid > 0) {
+                    Text("ชำระส่วนที่เหลือแล้ว ${baht(v.money.balancePaid)} บาท", fontSize = 13.sp)
+                    Text("รวมที่ลูกค้าจ่ายมา ${baht(paid)} บาท", fontSize = 13.sp)
+                }
                 Text("คืนลูกค้า ${refundPercent.toInt()}% = ${baht(refund)} บาท", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text("รีสอร์ทเก็บไว้ ${baht(kept)} บาท → แบ่งเข้ากระเป๋าเป็นรายได้", fontSize = 13.sp)
                 if (refund > 0) {

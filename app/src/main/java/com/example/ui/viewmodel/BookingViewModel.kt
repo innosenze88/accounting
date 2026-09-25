@@ -16,6 +16,8 @@ import com.example.data.booking.DayCloseEntity
 import com.example.data.booking.PaymentKind
 import com.example.data.booking.PaymentMethod
 import com.example.data.booking.WalletEntity
+import com.example.data.booking.WalletPercentChangeEntity
+import com.example.data.booking.WalletPercentRules
 import com.example.data.booking.WalletRole
 import com.example.data.booking.WalletTxnEntity
 import com.example.data.docs.DocLine
@@ -36,6 +38,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -93,8 +96,40 @@ class BookingViewModel(application: Application) : AndroidViewModel(application)
     val txns: StateFlow<List<WalletTxnEntity>> =
         repo.txnsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** History of % changes, newest first. */
+    val percentChanges: StateFlow<List<WalletPercentChangeEntity>> =
+        repo.percentChangesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Average income split into the wallets per month (last 3 finished months) — used to suggest a %. */
+    val avgMonthlyIncome: StateFlow<Double?> = combine(repo.walletsFlow, repo.txnsFlow) { ws, txns ->
+        WalletPercentRules.avgMonthlyIncome(txns, ws.firstOrNull { it.walletRole == WalletRole.ADVANCE }?.id, ReportPeriod.today())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val dayCloses: StateFlow<List<DayCloseEntity>> =
         repo.dayClosesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * Scanned income documents that can be attached to a payment as its slip (not rejected / voided / samples).
+     * An attached slip is not counted again as a document on the dashboard.
+     */
+    val slipOptions: StateFlow<List<BookingRules.SlipOption>> = db.documentDao().getAllDocuments()
+        .map { docs ->
+            docs.filter {
+                it.sampleId == null && it.status != "REJECTED" && it.status != "VOIDED" &&
+                    !it.transactionType.equals("EXPENSE", ignoreCase = true)
+            }.map { d ->
+                val who = d.sellerName ?: d.customerName ?: d.documentType
+                BookingRules.SlipOption(
+                    documentId = d.id, amount = d.totalAmount, date = d.date,
+                    label = "#${d.id} ${d.date?.let { ThaiDate.short(it) } ?: "?"} • ${d.totalAmount?.let { money(it) } ?: "?"} ฿ • $who" +
+                        if (d.status == "PENDING") " (รอตรวจ)" else ""
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Slips already attached to an active payment. */
+    val linkedSlipIds: StateFlow<Set<Long>> = repo.paymentsFlow.map { BookingRules.linkedSlipIds(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     val issuedDocs: StateFlow<List<IssuedDocumentEntity>> =
         docs.all.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -136,10 +171,19 @@ class BookingViewModel(application: Application) : AndroidViewModel(application)
         "✓ เช็คอินแล้ว"
     }
 
-    fun addPayment(bookingId: Long, kind: PaymentKind, method: PaymentMethod, amount: Double, date: String, note: String?) = act {
-        repo.addPayment(bookingId, kind, method, amount, date, note)
-        if (kind == PaymentKind.DEPOSIT) "✓ รับมัดจำ ${money(amount)} บาท → กระเป๋าเงินจองล่วงหน้า"
-        else "✓ รับชำระ ${money(amount)} บาท → แบ่งเข้ากระเป๋าแล้ว"
+    fun addPayment(
+        bookingId: Long,
+        kind: PaymentKind,
+        method: PaymentMethod,
+        amount: Double,
+        date: String,
+        note: String?,
+        slipDocumentId: Long? = null
+    ) = act {
+        repo.addPayment(bookingId, kind, method, amount, date, note, slipDocumentId)
+        val slip = if (slipDocumentId != null) " (แนบสลิป #$slipDocumentId — ไม่นับซ้ำเป็นรายได้เอกสาร)" else ""
+        if (kind == PaymentKind.DEPOSIT) "✓ รับมัดจำ ${money(amount)} บาท → กระเป๋าเงินจองล่วงหน้า$slip"
+        else "✓ รับชำระ ${money(amount)} บาท → แบ่งเข้ากระเป๋าแล้ว$slip"
     }
 
     fun voidPayment(paymentId: Long, reason: String) = act {
@@ -165,10 +209,15 @@ class BookingViewModel(application: Application) : AndroidViewModel(application)
         businessRepo.save(business.value.copy(profitWallets = ids.sorted().joinToString(",")))
     }
 
-    fun saveWallets(list: List<WalletEntity>) = act {
-        repo.saveWallets(list)
-        "✓ บันทึกการตั้งค่ากระเป๋าแล้ว"
+    fun saveWallets(list: List<WalletEntity>, reason: String = "", onSaved: () -> Unit = {}) = act {
+        val change = repo.saveWallets(list, reason)
+        onSaved()
+        if (change == null) "✓ บันทึกการตั้งค่ากระเป๋าแล้ว"
+        else "✓ ปรับ % แล้ว: ${change.summary}\nใช้กับรายได้ที่เข้ามาหลังจากนี้ (เงินที่แบ่งไปแล้วไม่ย้าย)"
     }
+
+    /** An earlier % setting on today's wallets (null when it no longer adds up to 100). */
+    fun walletsFromHistory(saved: String): List<WalletEntity>? = WalletPercentRules.restore(allWallets.value, saved)
 
     fun payExpense(walletId: Long, amount: Double, date: String, note: String, documentId: Long?, voucherPayee: String?) = act {
         repo.payExpense(walletId, amount, date, note, documentId)

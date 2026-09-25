@@ -8,6 +8,7 @@ import com.example.data.local.canVoid
 import com.example.data.local.documentStatus
 import com.example.data.model.AccountingDocumentJson
 import com.example.data.model.DocumentStatus
+import com.example.data.model.DocumentStatusRules
 import kotlinx.coroutines.flow.Flow
 
 class DocumentRepository(
@@ -61,6 +62,7 @@ class DocumentRepository(
     /** Stores the person-checked values and marks the document VERIFIED. rawJson (AI output) is kept. */
     suspend fun verifyDocument(id: Long, reviewed: AccountingDocumentJson) {
         val current = documentDao.getDocumentById(id) ?: return
+        DocumentStatusRules.verifyProblem(current.documentStatus())?.let { error(it) }
         val now = System.currentTimeMillis()
         documentDao.updateDocument(
             current.withFieldsFrom(reviewed).copy(
@@ -72,14 +74,13 @@ class DocumentRepository(
     }
 
     /**
-     * Moves a document back to PENDING / REJECTED. A voided document stays voided.
-     * [ExtractedDocumentEntity.verifiedAt] is kept on purpose: it records that the document was counted once,
-     * so it can only be voided later, never deleted.
+     * Moves a document between PENDING and REJECTED. A counted (VERIFIED) document can never go back
+     * without a trace: it is cancelled with a reason ([voidDocument]) and scanned again if it was wrong.
      */
     suspend fun setStatus(id: Long, status: DocumentStatus) {
         require(status != DocumentStatus.VOIDED) { "use voidDocument()" }
         val current = documentDao.getDocumentById(id) ?: return
-        if (current.documentStatus() == DocumentStatus.VOIDED) return
+        DocumentStatusRules.statusChangeProblem(current.documentStatus(), status)?.let { error(it) }
         documentDao.updateDocument(current.copy(status = status.code, updatedAt = System.currentTimeMillis()))
     }
 

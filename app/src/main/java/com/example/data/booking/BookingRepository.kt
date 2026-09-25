@@ -19,6 +19,7 @@ class BookingRepository(private val db: AppDatabase) {
     val walletsFlow: Flow<List<WalletEntity>> = wallets.observeWallets()
     val txnsFlow: Flow<List<WalletTxnEntity>> = wallets.observeTxns()
     val dayClosesFlow: Flow<List<DayCloseEntity>> = wallets.observeDayCloses()
+    val percentChangesFlow: Flow<List<WalletPercentChangeEntity>> = wallets.observePercentChanges()
 
     /** Creates the advance wallet + 8 wallets the first time (names and % can be changed later). */
     suspend fun ensureDefaultWallets() {
@@ -36,12 +37,13 @@ class BookingRepository(private val db: AppDatabase) {
 
     // ------------------------------------------------------------------ bookings
 
-    suspend fun saveBooking(b: BookingEntity): Long {
+    /** Checks and saves in one transaction, so two quick taps can never book the same room twice. */
+    suspend fun saveBooking(b: BookingEntity): Long = db.withTransaction {
         BookingRules.bookingProblem(b.guestName, b.roomNo, b.checkIn, b.checkOut, b.totalAmount)?.let { error(it) }
         BookingRules.overlapping(b, bookings.getAllBookings())?.let {
             error("ห้อง ${b.roomNo} มีการจองของ ${it.guestName} (${it.checkIn} ถึง ${it.checkOut}) ทับวันกันอยู่")
         }
-        return if (b.id == 0L) {
+        if (b.id == 0L) {
             bookings.insertBooking(b)
         } else {
             val current = requireNotNull(bookings.getBooking(b.id)) { "ไม่พบการจอง" }
@@ -74,6 +76,12 @@ class BookingRepository(private val db: AppDatabase) {
         check(b.bookingStatus != BookingStatus.CANCELLED) { "การจองนี้ยกเลิกแล้ว" }
         // After check-out there is no advance any more: late money is a normal payment split at once.
         val realKind = if (kind == PaymentKind.DEPOSIT && b.settledAt != null) PaymentKind.BALANCE else kind
+        if (slipDocumentId != null) {
+            val doc = requireNotNull(db.documentDao().getDocumentById(slipDocumentId)) { "ไม่พบสลิปที่เลือก" }
+            check(doc.status != "VOIDED" && doc.status != "REJECTED") { "สลิปนี้ถูกยกเลิก/ปฏิเสธไปแล้ว" }
+            val other = bookings.getAllPayments().firstOrNull { it.isActive && it.slipDocumentId == slipDocumentId }
+            check(other == null) { "สลิปนี้ผูกกับการรับเงินอื่นไปแล้ว (รายการ #${other?.id})" }
+        }
         val payment = BookingPaymentEntity(
             bookingId = bookingId, kind = realKind.code, method = method.code, amount = amount, date = date,
             note = note, slipDocumentId = slipDocumentId
@@ -127,7 +135,7 @@ class BookingRepository(private val db: AppDatabase) {
                 bookings.insertPayment(
                     BookingPaymentEntity(
                         bookingId = bookingId, kind = PaymentKind.REFUND.code, method = method.code,
-                        amount = c.refund, date = date, note = "คืนมัดจำ ${refundPercent.toInt()}% — $reason"
+                        amount = c.refund, date = date, note = "คืนเงิน ${refundPercent.toInt()}% ของที่จ่ายมา ${String.format(java.util.Locale.US, "%,.2f", c.paid)} — $reason"
                     )
                 )
             }
@@ -144,17 +152,46 @@ class BookingRepository(private val db: AppDatabase) {
 
     // ------------------------------------------------------------------ wallets
 
-    /** Saves names / % / targets. The budget + savings % must add up to 100. */
-    suspend fun saveWallets(list: List<WalletEntity>) = db.withTransaction {
+    /**
+     * Saves names / % / targets. The budget + savings % must add up to 100.
+     * When a % changes, [reason] is required and the change is kept in the history (wallet_percent_changes).
+     * New % apply to income split from now on; money already split is not moved.
+     * Returns the saved change, or null when no % changed.
+     */
+    suspend fun saveWallets(list: List<WalletEntity>, reason: String = ""): WalletPercentChangeEntity? = db.withTransaction {
         val splitting = list.filter { it.active && it.walletRole != WalletRole.ADVANCE }
         WalletMath.percentProblem(splitting.map { it.percent })?.let { error(it) }
         check(list.count { it.walletRole == WalletRole.SAVINGS && it.active } == 1) { "ต้องมีกระเป๋าเงินเก็บ 1 ใบ" }
         check(list.count { it.walletRole == WalletRole.ADVANCE } == 1) { "ต้องมีกระเป๋าเงินจองล่วงหน้า 1 ใบ" }
+        val before = wallets.getWallets()
+        // A wallet that still holds money cannot be switched off (the money would disappear from the screen).
+        val balances = BookingRules.balances(wallets.getAllTxns())
+        list.filter { !it.active && it.id != 0L }.forEach { w ->
+            val wasActive = before.firstOrNull { it.id == w.id }?.active == true
+            val bal = balances[w.id] ?: 0.0
+            check(!wasActive || kotlin.math.abs(bal) < 0.005) {
+                "ปิดกระเป๋า \"${w.name}\" ไม่ได้ ยังมีเงิน ${String.format(java.util.Locale.US, "%,.2f", bal)} บาท — ย้าย/จ่ายออกก่อน"
+            }
+        }
+        val diffs = WalletPercentRules.diff(before, list)
+        WalletPercentRules.changeProblem(diffs, reason)?.let { error(it) }
         list.forEach { w -> if (w.id == 0L) wallets.insertWallet(w) else wallets.updateWallet(w) }
+        if (diffs.isEmpty()) {
+            null
+        } else {
+            val saved = wallets.getWallets()
+            val change = WalletPercentChangeEntity(
+                reason = reason.trim(),
+                summary = WalletPercentRules.describe(WalletPercentRules.diff(before, saved)),
+                beforePercents = WalletPercentRules.encode(before),
+                afterPercents = WalletPercentRules.encode(saved)
+            )
+            change.copy(id = wallets.insertPercentChange(change))
+        }
     }
 
     /** Pays an expense from a wallet (electricity bill, salaries...). */
-    suspend fun payExpense(walletId: Long, amount: Double, date: String, note: String, documentId: Long?) {
+    suspend fun payExpense(walletId: Long, amount: Double, date: String, note: String, documentId: Long?) = db.withTransaction {
         if (documentId != null) {
             val already = wallets.getTxnsForSource(TxnSource.DOCUMENT.code, documentId).filter { it.isActive }
             check(already.isEmpty()) { "เอกสารนี้ตัดจากกระเป๋าไปแล้ว" }
