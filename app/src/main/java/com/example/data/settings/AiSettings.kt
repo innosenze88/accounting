@@ -57,25 +57,45 @@ data class AiSettings(
 
 /**
  * Stores AI provider settings in app-private SharedPreferences ("ai_settings").
- * The file is excluded from cloud backup and device transfer (see res/xml backup rules).
+ * API keys and the Sheets token are encrypted with a key kept in the Android Keystore; values saved in plain
+ * text by older versions are encrypted the first time they are read. The file is also excluded from cloud
+ * backup and device transfer (see res/xml backup rules).
  */
-class AiSettingsRepository(context: Context) {
+class AiSettingsRepository(
+    context: Context,
+    private val cipher: SecretCipher? = AesGcmSecretCipher.fromAndroidKeystore()
+) {
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _settings = MutableStateFlow(load())
     val settings: StateFlow<AiSettings> = _settings.asStateFlow()
 
+    /** Reads a secret. Old plain values are returned as-is and re-saved encrypted. Unreadable -> "". */
+    private fun readSecret(key: String): String? {
+        val stored = prefs.getString(key, null) ?: return null
+        if (!stored.startsWith(SEALED_PREFIX)) {
+            if (stored.isNotEmpty() && cipher != null) prefs.edit().putString(key, seal(stored)).apply()
+            return stored
+        }
+        val c = cipher ?: return ""
+        return runCatching { c.decrypt(stored.removePrefix(SEALED_PREFIX)) }.getOrElse { "" }
+    }
+
+    private fun seal(value: String): String =
+        if (value.isEmpty() || cipher == null) value
+        else runCatching { SEALED_PREFIX + cipher.encrypt(value) }.getOrElse { value }
+
     private fun load(): AiSettings = AiSettings(
         provider = AiProvider.fromCode(prefs.getString(KEY_PROVIDER, null)),
-        geminiApiKey = prefs.getString(KEY_GEMINI_KEY, "") ?: "",
+        geminiApiKey = readSecret(KEY_GEMINI_KEY) ?: "",
         geminiModel = prefs.getString(KEY_GEMINI_MODEL, AiSettings.DEFAULT_GEMINI_MODEL) ?: AiSettings.DEFAULT_GEMINI_MODEL,
-        claudeApiKey = prefs.getString(KEY_CLAUDE_KEY, "") ?: "",
+        claudeApiKey = readSecret(KEY_CLAUDE_KEY) ?: "",
         claudeModel = prefs.getString(KEY_CLAUDE_MODEL, AiSettings.DEFAULT_CLAUDE_MODEL) ?: AiSettings.DEFAULT_CLAUDE_MODEL,
         claudeWorkspaceId = prefs.getString(KEY_CLAUDE_WORKSPACE, "") ?: "",
         sheetsWebAppUrl = prefs.getString(KEY_SHEETS_URL, "") ?: "",
-        sheetsToken = prefs.getString(KEY_SHEETS_TOKEN, null) ?: newToken().also {
-            prefs.edit().putString(KEY_SHEETS_TOKEN, it).apply()
+        sheetsToken = readSecret(KEY_SHEETS_TOKEN)?.takeIf { it.isNotBlank() } ?: newToken().also {
+            prefs.edit().putString(KEY_SHEETS_TOKEN, seal(it)).apply()
         },
         sheetsAutoSync = prefs.getBoolean(KEY_SHEETS_AUTO, true)
     )
@@ -92,13 +112,13 @@ class AiSettingsRepository(context: Context) {
         )
         prefs.edit()
             .putString(KEY_PROVIDER, clean.provider.code)
-            .putString(KEY_GEMINI_KEY, clean.geminiApiKey)
+            .putString(KEY_GEMINI_KEY, seal(clean.geminiApiKey))
             .putString(KEY_GEMINI_MODEL, clean.geminiModel)
-            .putString(KEY_CLAUDE_KEY, clean.claudeApiKey)
+            .putString(KEY_CLAUDE_KEY, seal(clean.claudeApiKey))
             .putString(KEY_CLAUDE_MODEL, clean.claudeModel)
             .putString(KEY_CLAUDE_WORKSPACE, clean.claudeWorkspaceId)
             .putString(KEY_SHEETS_URL, clean.sheetsWebAppUrl)
-            .putString(KEY_SHEETS_TOKEN, clean.sheetsToken)
+            .putString(KEY_SHEETS_TOKEN, seal(clean.sheetsToken))
             .putBoolean(KEY_SHEETS_AUTO, clean.sheetsAutoSync)
             .apply()
         _settings.value = clean
@@ -106,6 +126,8 @@ class AiSettingsRepository(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "ai_settings"
+        /** Marks a value encrypted by [SecretCipher]. */
+        private const val SEALED_PREFIX = "enc1:"
         private const val KEY_PROVIDER = "provider"
         private const val KEY_GEMINI_KEY = "gemini_api_key"
         private const val KEY_GEMINI_MODEL = "gemini_model"
