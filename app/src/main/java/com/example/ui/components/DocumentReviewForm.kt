@@ -47,10 +47,10 @@ import com.example.data.model.AccountingDocumentJson
 import com.example.data.model.DocumentStatus
 import com.example.data.model.DocumentType
 import com.example.data.model.TransactionType
+import com.example.data.wallet.WalletMath
 import java.util.Locale
 import kotlin.math.abs
 
-private val DATE_REGEX = Regex("""^\d{4}-\d{2}-\d{2}$""")
 
 /** Parses "1,250.00" / " 1250 " -> 1250.0; blank -> null; invalid -> NaN (flagged as error). */
 private fun parseAmount(text: String): Double? {
@@ -102,9 +102,9 @@ fun DocumentReviewForm(
         if (txType.isBlank()) add("เลือกว่าเป็นรายรับหรือรายจ่าย")
         if (totalVal == null) add("ต้องระบุยอดรวมทั้งสิ้น")
         listOf("มูลค่าก่อน VAT" to subtotalVal, "VAT" to vatVal, "ยอดรวม" to totalVal, "มัดจำ" to depositVal)
-            .forEach { (label, v) -> if (v != null && v.isNaN()) add("$label ไม่ใช่ตัวเลข") }
+            .forEach { (label, v) -> if (v != null && !v.isFinite()) add("$label ไม่ใช่ตัวเลข") }
         if (totalVal != null && !totalVal.isNaN() && totalVal < 0) add("ยอดรวมต้องไม่ติดลบ")
-        if (date.isNotBlank() && !DATE_REGEX.matches(date.trim())) add("วันที่ต้องเป็นรูปแบบ YYYY-MM-DD (ค.ศ.)")
+        if (date.isNotBlank() && !WalletMath.isIsoDate(date.trim())) add("วันที่ไม่ถูกต้อง ต้องเป็นวันที่จริงในรูปแบบ YYYY-MM-DD (ค.ศ.)")
     }
 
     // ---- Warnings (do not block, but ask the person to double-check) ----
