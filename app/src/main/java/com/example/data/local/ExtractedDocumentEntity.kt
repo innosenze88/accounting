@@ -5,7 +5,6 @@ import androidx.room.PrimaryKey
 import com.example.data.model.AccountingDocumentJson
 import com.example.data.model.DocumentStatus
 import com.example.data.model.LineItemJson
-import com.example.data.wallet.WalletMath
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -155,14 +154,9 @@ fun ExtractedDocumentEntity.countsInAccounting(): Boolean =
 fun ExtractedDocumentEntity.quickVerifyProblem(): String? {
     if (sampleId != null) return "เอกสารตัวอย่าง"
     if (documentStatus() != DocumentStatus.PENDING) return "ไม่ได้อยู่ในสถานะรอตรวจ"
-    if (com.example.data.model.TransactionType.fromCode(transactionType) == null) return "ยังไม่รู้ว่ารายรับหรือรายจ่าย"
-    val total = totalAmount ?: return "ไม่มียอดรวม"
-    if (!total.isFinite() || total < 0) return "ยอดรวมไม่ถูกต้อง"
-    if (total == 0.0) return "ยอดรวมเป็น 0"
-    val d = date?.trim()
-    if (!d.isNullOrEmpty() && !WalletMath.isIsoDate(d)) return "วันที่ไม่ถูกต้อง"
-    if (d != null && (d.take(4).toIntOrNull() ?: 0) > 2400) return "ปีเป็น พ.ศ."
-    return null
+    return com.example.data.model.DocumentValidation
+        .problems(transactionType, date, subtotal, vatAmount, totalAmount, depositAmount)
+        .firstOrNull()
 }
 
 /**

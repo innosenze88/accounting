@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import com.example.data.model.DocumentValidation
 import com.example.data.local.DocumentDao
 import com.example.data.local.DocumentImageStore
 import com.example.data.local.ExtractedDocumentEntity
@@ -60,6 +61,8 @@ class DocumentRepository(
 
     /** Stores the person-checked values and marks the document VERIFIED. rawJson (AI output) is kept. */
     suspend fun verifyDocument(id: Long, reviewed: AccountingDocumentJson) {
+        // Last guard: whatever screen called this, invalid data never counts in the accounts.
+        DocumentValidation.problems(reviewed).firstOrNull()?.let { throw IllegalArgumentException(it) }
         val current = documentDao.getDocumentById(id) ?: return
         val now = System.currentTimeMillis()
         documentDao.updateDocument(

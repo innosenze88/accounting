@@ -45,9 +45,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AccountingDocumentJson
 import com.example.data.model.DocumentStatus
+import com.example.data.model.DocumentValidation
 import com.example.data.model.DocumentType
 import com.example.data.model.TransactionType
-import com.example.data.wallet.WalletMath
 import java.util.Locale
 import kotlin.math.abs
 
@@ -98,14 +98,7 @@ fun DocumentReviewForm(
     val depositVal = parseAmount(deposit)
 
     // ---- Validation (blocking errors) ----
-    val errors = buildList {
-        if (txType.isBlank()) add("เลือกว่าเป็นรายรับหรือรายจ่าย")
-        if (totalVal == null) add("ต้องระบุยอดรวมทั้งสิ้น")
-        listOf("มูลค่าก่อน VAT" to subtotalVal, "VAT" to vatVal, "ยอดรวม" to totalVal, "มัดจำ" to depositVal)
-            .forEach { (label, v) -> if (v != null && !v.isFinite()) add("$label ไม่ใช่ตัวเลข") }
-        if (totalVal != null && !totalVal.isNaN() && totalVal < 0) add("ยอดรวมต้องไม่ติดลบ")
-        if (date.isNotBlank() && !WalletMath.isIsoDate(date.trim())) add("วันที่ไม่ถูกต้อง ต้องเป็นวันที่จริงในรูปแบบ YYYY-MM-DD (ค.ศ.)")
-    }
+    val errors = DocumentValidation.problems(txType, date, subtotalVal, vatVal, totalVal, depositVal)
 
     // ---- Warnings (do not block, but ask the person to double-check) ----
     val warnings = buildList {
@@ -115,7 +108,6 @@ fun DocumentReviewForm(
         ) {
             add(String.format("มูลค่าก่อน VAT + VAT = %,.2f ไม่ตรงกับยอดรวม %,.2f", subtotalVal + vatVal, totalVal))
         }
-        if (date.trim().take(4).toIntOrNull()?.let { it > 2400 } == true) add("ปีดูเหมือนเป็น พ.ศ. — ควรเป็น ค.ศ.")
     }
 
     Card(
