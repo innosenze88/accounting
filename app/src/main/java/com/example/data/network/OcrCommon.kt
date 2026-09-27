@@ -166,8 +166,8 @@ Never invent values. Use null when something is not in the report."""
     private fun JSONObject.optNumber(key: String): Double? {
         if (!has(key) || isNull(key)) return null
         return when (val v = opt(key)) {
-            is Number -> v.toDouble().takeUnless { it.isNaN() }
-            else -> v.toString().replace(Regex("[,฿\\sบาท]"), "").toDoubleOrNull()
+            is Number -> v.toDouble().takeUnless { !it.isFinite() }
+            else -> v.toString().replace(Regex("[,฿\\sบาท]"), "").toDoubleOrNull()?.takeIf { it.isFinite() }
         }
     }
 
