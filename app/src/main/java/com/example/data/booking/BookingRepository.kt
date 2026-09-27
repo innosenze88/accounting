@@ -154,7 +154,7 @@ class BookingRepository(private val db: AppDatabase) {
     }
 
     /** Pays an expense from a wallet (electricity bill, salaries...). */
-    suspend fun payExpense(walletId: Long, amount: Double, date: String, note: String, documentId: Long?) {
+    suspend fun payExpense(walletId: Long, amount: Double, date: String, note: String, documentId: Long?) = db.withTransaction {
         if (documentId != null) {
             val already = wallets.getTxnsForSource(TxnSource.DOCUMENT.code, documentId).filter { it.isActive }
             check(already.isEmpty()) { "เอกสารนี้ตัดจากกระเป๋าไปแล้ว" }
