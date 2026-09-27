@@ -82,9 +82,11 @@ class AiSettingsRepository(
         return runCatching { c.decrypt(stored.removePrefix(SEALED_PREFIX)) }.getOrElse { "" }
     }
 
-    private fun seal(value: String): String =
-        if (value.isEmpty() || cipher == null) value
-        else runCatching { SEALED_PREFIX + cipher.encrypt(value) }.getOrElse { value }
+    private fun seal(value: String): String {
+        val c = cipher
+        if (value.isEmpty() || c == null) return value
+        return runCatching { SEALED_PREFIX + c.encrypt(value) }.getOrElse { value }
+    }
 
     private fun load(): AiSettings = AiSettings(
         provider = AiProvider.fromCode(prefs.getString(KEY_PROVIDER, null)),
