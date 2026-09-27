@@ -21,16 +21,21 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,6 +55,10 @@ fun BackupCard(vm: BackupViewModel) {
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) vm.saveTo(uri)
     }
+    val saveLockedLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) vm.saveTo(uri)
+    }
+    var showPasswordDialog by remember { mutableStateOf(false) }
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.pickRestore(uri)
     }
@@ -72,8 +81,32 @@ fun BackupCard(vm: BackupViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            // Password lock for backups that leave the phone (they hold guest names, ID numbers and all accounts).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (s.passwordSet) "🔒 ไฟล์สำรองล็อกด้วยรหัสผ่าน" else "ไฟล์สำรองยังไม่ได้ตั้งรหัสผ่าน",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (s.passwordSet) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        if (s.passwordSet) "ใช้กับไฟล์ที่บันทึก ส่งต่อ และสำรองขึ้น Google Drive"
+                        else "ถ้าไฟล์หลุดไปถึงคนอื่น จะเปิดดูข้อมูลลูกค้าและบัญชีได้ทันที",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { showPasswordDialog = true }, enabled = !s.busy, modifier = Modifier.testTag("backup_password_button")) {
+                    Text(if (s.passwordSet) "เปลี่ยน" else "ตั้งรหัส")
+                }
+            }
+
             Button(
-                onClick = { saveLauncher.launch(BackupManager.fileName()) },
+                onClick = {
+                    if (s.passwordSet) saveLockedLauncher.launch(BackupManager.fileName(locked = true))
+                    else saveLauncher.launch(BackupManager.fileName())
+                },
                 enabled = !s.busy,
                 modifier = Modifier.fillMaxWidth().testTag("backup_save_button")
             ) { Text("สำรองตอนนี้ → บันทึกเป็นไฟล์ (เลือก Google Drive ได้)") }
@@ -117,6 +150,43 @@ fun BackupCard(vm: BackupViewModel) {
         }
     }
 
+    if (showPasswordDialog) {
+        BackupPasswordDialog(
+            passwordSet = s.passwordSet,
+            onSave = { p, c -> vm.setPassword(p, c).also { if (it == null) showPasswordDialog = false } },
+            onRemove = { vm.clearPassword(); showPasswordDialog = false },
+            onDismiss = { showPasswordDialog = false }
+        )
+    }
+
+    if (s.pendingLocked != null) {
+        var password by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { vm.cancelRestore() },
+            title = { Text("ไฟล์สำรองนี้ล็อกไว้") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("ใส่รหัสผ่านที่ตั้งไว้ตอนสำรองข้อมูล", fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("รหัสผ่าน") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth().testTag("unlock_password_field")
+                    )
+                    s.unlockError?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.unlockRestore(password) }, enabled = password.isNotEmpty() && !s.busy) {
+                    Text("เปิดไฟล์")
+                }
+            },
+            dismissButton = { TextButton(onClick = { vm.cancelRestore() }) { Text("ยกเลิก") } }
+        )
+    }
+
     s.pendingRestore?.let { (_, info) ->
         AlertDialog(
             onDismissRequest = { vm.cancelRestore() },
@@ -141,6 +211,53 @@ fun BackupCard(vm: BackupViewModel) {
             dismissButton = { TextButton(onClick = { vm.cancelRestore() }) { Text("ยกเลิก") } }
         )
     }
+}
+
+/** Set / change / remove the password that locks backup files. */
+@Composable
+private fun BackupPasswordDialog(
+    passwordSet: Boolean,
+    onSave: (String, String) -> String?,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (passwordSet) "เปลี่ยนรหัสผ่านไฟล์สำรอง" else "ตั้งรหัสผ่านไฟล์สำรอง") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "ถ้าลืมรหัสผ่าน จะกู้คืนไฟล์สำรองที่ล็อกไว้ไม่ได้เลย — จดเก็บไว้ในที่ปลอดภัย",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.error
+                )
+                if (passwordSet) {
+                    Text("ไฟล์เก่ายังต้องใช้รหัสเดิมเปิด", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it; problem = null },
+                    label = { Text("รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().testTag("backup_password_field")
+                )
+                OutlinedTextField(
+                    value = confirm, onValueChange = { confirm = it; problem = null },
+                    label = { Text("ใส่รหัสผ่านอีกครั้ง") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().testTag("backup_password_confirm_field")
+                )
+                problem?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
+                if (passwordSet) {
+                    TextButton(onClick = onRemove) { Text("ยกเลิกรหัสผ่าน (ไฟล์สำรองต่อจากนี้ไม่ล็อก)", fontSize = 12.sp) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { problem = onSave(password, confirm) }) { Text("บันทึก") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ยกเลิก") } }
+    )
 }
 
 /** Reminder on the dashboard when there was no backup for a week. */

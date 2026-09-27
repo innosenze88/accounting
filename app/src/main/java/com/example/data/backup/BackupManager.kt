@@ -7,7 +7,9 @@ import android.net.Uri
 import android.os.Process
 import com.example.BuildConfig
 import com.example.data.local.AppDatabase
+import com.example.data.settings.AesGcmSecretCipher
 import com.example.data.settings.BusinessSettingsRepository
+import com.example.data.settings.SecretCipher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -35,6 +37,8 @@ data class BackupInfo(
  * One-file backup of everything the app keeps: the database (documents, bookings, wallets, issued documents),
  * original images/PDFs, the user's report readers and the resort settings.
  * API keys and the Google Sheets token are NOT included (they must be entered again on a new phone).
+ * When a backup password is set, every backup that leaves the app (file, share, Google Drive) is locked
+ * with it ([BackupCrypto]); the safety copy kept inside the app before a restore stays a plain zip.
  */
 class BackupManager(private val context: Context) {
 
@@ -49,8 +53,17 @@ class BackupManager(private val context: Context) {
         private const val PREFS_ENTRY = "prefs/business_settings.json"
         private const val KEEP_SAFETY = 3
 
-        fun fileName(time: Long = System.currentTimeMillis()): String =
-            "resort-backup-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date(time)) + ".zip"
+        const val LOCKED_EXT = ".rbackup"
+
+        fun fileName(time: Long = System.currentTimeMillis(), locked: Boolean = false): String =
+            "resort-backup-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date(time)) +
+                (if (locked) LOCKED_EXT else ".zip")
+    }
+
+    /** A picked backup file: ready to show, or locked and waiting for its password. */
+    sealed class Picked {
+        data class Ready(val zip: File, val info: BackupInfo) : Picked()
+        data class Locked(val file: File) : Picked()
     }
 
     private val app = context.applicationContext
@@ -58,7 +71,28 @@ class BackupManager(private val context: Context) {
     /** Safety copies made right before a restore. Outside filesDir, so a restore never touches them. */
     private val safetyDir get() = File(app.noBackupFilesDir, "safety_backups").apply { mkdirs() }
 
-    /** Creates a backup zip in the cache folder and returns it (share it, save it or upload it). */
+    /**
+     * Creates the backup to hand out (save / share / upload): locked with the backup password when one is set,
+     * otherwise a plain zip.
+     */
+    suspend fun createExport(): File = withContext(Dispatchers.IO) {
+        val store = BackupPasswordStore(app)
+        // A password is set but cannot be read: stop rather than hand out an unlocked file.
+        val password = if (store.isSet) {
+            store.password() ?: error("อ่านรหัสผ่านไฟล์สำรองไม่ได้ — ตั้งรหัสผ่านใหม่ในหน้าสำรองข้อมูล")
+        } else null
+        val zip = createBackup()
+        if (password == null) return@withContext zip
+        val locked = File(backupDir, zip.name.removeSuffix(".zip") + LOCKED_EXT)
+        try {
+            BackupCrypto.lock(zip, locked, password)
+        } finally {
+            zip.delete()
+        }
+        locked
+    }
+
+    /** Creates a plain backup zip in the cache folder (used inside the app, e.g. the safety copy). */
     suspend fun createBackup(): File = withContext(Dispatchers.IO) {
         val db = AppDatabase.getInstance(app)
         // Write everything from the WAL journal into the main file, so copying one file is enough.
@@ -105,11 +139,19 @@ class BackupManager(private val context: Context) {
     }
 
     /** Copies a picked file into the cache and reads its manifest. Throws with a Thai message if it is not a backup. */
-    suspend fun inspect(uri: Uri): Pair<File, BackupInfo> = withContext(Dispatchers.IO) {
-        val copy = File(backupDir, "restore-candidate.zip")
+    suspend fun inspect(uri: Uri): Picked = withContext(Dispatchers.IO) {
+        val copy = File(backupDir, "restore-candidate.bin")
         app.contentResolver.openInputStream(uri)?.use { input -> copy.outputStream().use { input.copyTo(it) } }
             ?: error("เปิดไฟล์ไม่ได้")
-        copy to readInfo(copy)
+        if (BackupCrypto.isLocked(copy)) Picked.Locked(copy) else Picked.Ready(copy, readInfo(copy))
+    }
+
+    /** Opens a locked backup with its password. Throws [BackupPasswordException] when the password is wrong. */
+    suspend fun unlock(locked: File, password: String): Picked.Ready = withContext(Dispatchers.IO) {
+        val zip = File(backupDir, "restore-candidate.zip")
+        BackupCrypto.unlock(locked, zip, password)
+        locked.delete()
+        Picked.Ready(zip, readInfo(zip))
     }
 
     private fun readInfo(zipFile: File): BackupInfo {
@@ -213,6 +255,37 @@ class BackupManager(private val context: Context) {
         val restart = Intent.makeRestartActivityTask(launch.component)
         app.startActivity(restart.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         Process.killProcess(Process.myPid())
+    }
+}
+
+/**
+ * The backup password, encrypted with the Android Keystore key (see [SecretCipher]) so the daily Google Drive
+ * backup can lock files without asking. It is never part of a backup.
+ */
+class BackupPasswordStore(
+    context: Context,
+    private val cipher: SecretCipher? = AesGcmSecretCipher.fromAndroidKeystore()
+) {
+    private val prefs = context.applicationContext.getSharedPreferences("backup_secret", Context.MODE_PRIVATE)
+
+    val isSet: Boolean get() = prefs.getString(KEY, null) != null
+
+    /** The password, or null when none is set (or it can no longer be read on this phone). */
+    fun password(): String? {
+        val sealed = prefs.getString(KEY, null) ?: return null
+        val c = cipher ?: return null
+        return runCatching { c.decrypt(sealed) }.getOrNull()
+    }
+
+    fun set(password: String) {
+        val c = checkNotNull(cipher) { "เครื่องนี้เก็บรหัสผ่านอย่างปลอดภัยไม่ได้ (Android Keystore ใช้ไม่ได้)" }
+        prefs.edit().putString(KEY, c.encrypt(password)).apply()
+    }
+
+    fun clear() = prefs.edit().remove(KEY).apply()
+
+    private companion object {
+        const val KEY = "backup_password"
     }
 }
 
