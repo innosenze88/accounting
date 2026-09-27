@@ -78,6 +78,16 @@ class BookingRulesTest {
     }
 
     @Test
+    fun cancellationWithBalancePaymentIsBlocked() {
+        val deposit = pay(1, PaymentKind.DEPOSIT, 1000.0)
+        val balance = pay(2, PaymentKind.BALANCE, 2000.0)
+        val error = runCatching {
+            BookingRules.cancel(setup, booking, listOf(deposit, balance), "2026-09-25", 50.0)
+        }.exceptionOrNull()
+        assertNotNull("a cancellation must not leave a balance payment as income", error)
+    }
+
+    @Test
     fun cannotSettleTwice() {
         val settled = booking.copy(settledAt = 1L, status = BookingStatus.CHECKED_OUT.code)
         val e = runCatching { BookingRules.checkOut(setup, settled, emptyList(), "2026-10-02") }.exceptionOrNull()
