@@ -146,7 +146,11 @@ object BookingRules {
         refundPercent: Double
     ): Cancellation {
         require(booking.settledAt == null) { "การจองนี้เช็คเอาท์/ยกเลิกไปแล้ว" }
-        val deposits = money(booking, payments).deposits
+        val activePayments = payments.filter { it.bookingId == booking.id && it.isActive }
+        require(activePayments.none { it.paymentKind == PaymentKind.BALANCE }) {
+            "ยกเลิกไม่ได้หลังรับเงินส่วนที่เหลือแล้ว — ให้คืน/ยกเลิก payment นั้นก่อน"
+        }
+        val deposits = money(booking, activePayments).deposits
         if (deposits <= 0.0) return Cancellation(0.0, 0.0, emptyList())
         val (refund, kept) = WalletMath.cancellationSplit(deposits, refundPercent)
         val note = "ยกเลิก ${booking.guestName} ห้อง ${booking.roomNo}"
