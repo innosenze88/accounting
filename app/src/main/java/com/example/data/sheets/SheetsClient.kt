@@ -122,7 +122,11 @@ class SheetsClient {
             .map { it.optInt("rows", 0) }
     }
 
-    /** Sends a table in chunks of [chunkSize] rows. Re-sending the same [importId] replaces the old rows. */
+    /**
+     * Sends a table in chunks of [chunkSize] rows. Re-sending the same [importId] replaces the old rows.
+     * Every send gets its own sendId, so the script can drop a chunk that arrives twice (network retry)
+     * instead of adding its rows again.
+     */
     suspend fun appendTable(
         url: String,
         token: String,
@@ -134,11 +138,13 @@ class SheetsClient {
         chunkSize: Int = 500
     ): Result<Int> {
         var sent = 0
+        val sendId = java.util.UUID.randomUUID().toString()
         val chunks = if (rows.isEmpty()) listOf(emptyList()) else rows.chunked(chunkSize)
         chunks.forEachIndexed { index, chunk ->
             val body = JSONObject().apply {
                 put("action", "appendTable")
                 put("importId", importId)
+                put("sendId", sendId)
                 put("fileName", fileName)
                 put("sheetName", sheetName)
                 put("chunkIndex", index)

@@ -179,9 +179,13 @@ function upsertReport_(r) {
   upsertRow_(sheet_('eZee_Reports'), summary, 'app_id');
 
   const rows = r.rows || [];
+  const detailName = 'eZee_' + (r.report_type || 'other');
+  // Always clear the rows of an earlier send first, even when this send has no rows,
+  // so the sheet never keeps details that are no longer in the report.
+  const oldDetail = SpreadsheetApp.getActive().getSheetByName(detailName);
+  if (oldDetail) deleteRowsWhere_(oldDetail, 'app_id', r.app_id);
   if (rows.length) {
-    const sh = sheet_('eZee_' + (r.report_type || 'other'));
-    deleteRowsWhere_(sh, 'app_id', r.app_id);
+    const sh = sheet_(detailName);
     const keys = ['app_id', 'report_date'];
     rows.forEach(function (o) {
       Object.keys(o).forEach(function (k) { if (keys.indexOf(k) === -1) keys.push(k); });
@@ -199,17 +203,66 @@ function upsertReport_(r) {
   return { ok: true, rows: rows.length };
 }
 
-// CSV / Excel rows. Sent in chunks; chunk 0 first removes rows of an earlier send of the same file.
+// Sheets the app writes itself. A CSV / Excel import must never write into them.
+const RESERVED_SHEETS_ = ['Accounting', 'Voided', 'eZee_Reports', 'LineInbox'];
+const MAX_TABLE_ROWS_ = 1000; // per chunk (the app sends 500)
+
+function isReservedSheet_(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return n.indexOf('ezee_') === 0 || RESERVED_SHEETS_.some(function (r) { return r.toLowerCase() === n; });
+}
+
+// Deletes every data row for which test(row, colIndexByHeader) is true. Reads the sheet once.
+function deleteRowsMatching_(sh, test) {
+  const lastCol = sh.getLastColumn();
+  const last = sh.getLastRow();
+  if (last < 2 || lastCol < 1) return;
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const col = {};
+  headers.forEach(function (h, i) { col[h] = i; });
+  const vals = sh.getRange(2, 1, last - 1, lastCol).getValues();
+  for (let i = vals.length - 1; i >= 0; i--) {
+    if (test(vals[i], col)) sh.deleteRow(i + 2);
+  }
+}
+
+// CSV / Excel rows, sent in chunks. Safe to receive the same chunk twice (retry):
+//  - rows of this file from an earlier send (other send_id) are removed,
+//  - rows of this same chunk are removed before it is written again, so nothing is doubled.
+// Old app versions without sendId keep the previous behaviour (chunk 0 clears the file).
 function appendTable_(b) {
+  if (isReservedSheet_(b.sheetName)) {
+    return { ok: false, error: 'ชื่อแผ่นงาน "' + b.sheetName + '" ใช้โดยแอปอยู่แล้ว — ตั้งชื่ออื่น' };
+  }
+  if (!b.importId || !Array.isArray(b.headers) || !Array.isArray(b.rows)) {
+    return { ok: false, error: 'ข้อมูลตารางไม่ครบ' };
+  }
+  if (b.rows.length > MAX_TABLE_ROWS_) {
+    return { ok: false, error: 'ส่งได้ไม่เกิน ' + MAX_TABLE_ROWS_ + ' แถวต่อครั้ง' };
+  }
   const sh = sheet_(b.sheetName);
-  if (b.chunkIndex === 0) deleteRowsWhere_(sh, 'import_id', b.importId);
-  const headers = ensureHeaders_(sh, ['import_id', 'file_name'].concat(b.headers));
+  const importId = String(b.importId);
+  const sendId = b.sendId ? String(b.sendId) : '';
+  const chunk = String(Number(b.chunkIndex) || 0);
+  const headers = ensureHeaders_(sh, ['import_id', 'send_id', 'chunk_index', 'file_name'].concat(b.headers));
+  if (sendId) {
+    deleteRowsMatching_(sh, function (row, col) {
+      if (String(row[col.import_id]) !== importId) return false;
+      return String(row[col.send_id]) !== sendId || String(row[col.chunk_index]) === chunk;
+    });
+  } else if (chunk === '0') {
+    deleteRowsWhere_(sh, 'import_id', importId);
+  }
   const idx = b.headers.map(function (h) { return headers.indexOf(h); });
   const idCol = headers.indexOf('import_id');
+  const sendCol = headers.indexOf('send_id');
+  const chunkCol = headers.indexOf('chunk_index');
   const fileCol = headers.indexOf('file_name');
   const values = b.rows.map(function (r) {
     const out = headers.map(function () { return ''; });
-    out[idCol] = b.importId;
+    out[idCol] = importId;
+    out[sendCol] = sendId;
+    out[chunkCol] = Number(chunk);
     out[fileCol] = b.fileName;
     r.forEach(function (v, i) { if (idx[i] >= 0) out[idx[i]] = cell_(v); });
     return out;
