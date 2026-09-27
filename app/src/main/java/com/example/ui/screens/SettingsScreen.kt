@@ -118,7 +118,7 @@ fun SettingsScreen(
                 model = draft.geminiModel,
                 onModelChange = { draft = draft.copy(geminiModel = it); savedNotice = false },
                 suggestions = AiSettings.GEMINI_MODEL_SUGGESTIONS,
-                extraNote = "ถ้าเว้นว่าง จะใช้ key จาก AI Studio Secrets (ถ้ามี)"
+                extraNote = "ต้องใส่ key ที่นี่ — แอปไม่ฝัง key ไว้ในไฟล์ติดตั้ง"
             )
             AiProvider.CLAUDE -> ProviderCard(
                 title = "Anthropic Claude",

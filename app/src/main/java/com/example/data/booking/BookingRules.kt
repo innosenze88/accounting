@@ -41,6 +41,7 @@ data class WalletSetup(val advance: WalletEntity, val budget: List<WalletEntity>
  *  - At check-out, the deposits leave the ADVANCE wallet in one go and are split into the budget wallets by %.
  *  - Money paid at check-out (the balance) is split into the budget wallets immediately.
  *  - Cancelled booking: the guest gets [refundPercent] % of the deposit back, the rest is split as income.
+ *    A booking with an active BALANCE payment cannot be cancelled until that payment is voided.
  *  - Month end: what is left in each budget wallet moves to the savings wallet.
  */
 object BookingRules {
@@ -146,7 +147,13 @@ object BookingRules {
         refundPercent: Double
     ): Cancellation {
         require(booking.settledAt == null) { "การจองนี้เช็คเอาท์/ยกเลิกไปแล้ว" }
-        val deposits = money(booking, payments).deposits
+        val m = money(booking, payments)
+        // A BALANCE payment is already split into the budget wallets as income. Cancelling on top of it would
+        // leave that money counted as income, so it must be voided first (voidPayment reverses its wallet moves).
+        require(m.balancePaid <= 0.0) {
+            "การจองนี้มียอดชำระส่วนที่เหลือ ${fmt(m.balancePaid)} บาท — ยกเลิกรายการชำระนั้นก่อน แล้วค่อยยกเลิกการจอง"
+        }
+        val deposits = m.deposits
         if (deposits <= 0.0) return Cancellation(0.0, 0.0, emptyList())
         val (refund, kept) = WalletMath.cancellationSplit(deposits, refundPercent)
         val note = "ยกเลิก ${booking.guestName} ห้อง ${booking.roomNo}"

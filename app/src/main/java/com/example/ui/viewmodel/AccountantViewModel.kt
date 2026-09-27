@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.BuildConfig
 import com.example.data.local.AppDatabase
 import com.example.data.local.DocumentImageStore
 import com.example.data.local.ExtractedDocumentEntity
@@ -119,14 +118,13 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
 
     /**
      * Returns the service, API key and model to use, or null when no key is set.
-     * Gemini falls back to the build-time key (AI Studio Secrets) when the Settings key is empty.
+     * Only the key entered in Settings is used: a build-time key would be packed into the APK where anyone
+     * holding the APK can extract it.
      */
     private fun resolveProvider(settings: AiSettings): Triple<OcrService, String, String>? {
         return when (settings.provider) {
             AiProvider.GEMINI -> {
-                val buildKey = BuildConfig.GEMINI_API_KEY
-                    ?.takeIf { it.isNotBlank() && it != "MY_GEMINI_API_KEY" }
-                val key = settings.geminiApiKey.ifBlank { buildKey ?: "" }
+                val key = settings.geminiApiKey
                 if (key.isBlank()) null else Triple(geminiService, key, settings.activeModel)
             }
             AiProvider.CLAUDE -> {

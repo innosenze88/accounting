@@ -70,6 +70,8 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  // Never pack an AI key into the APK (anyone with the APK can read BuildConfig). Users enter keys in Settings.
+  ignoreList.add("GEMINI_API_KEY")
 }
 
 // Export Room schema JSON (commit the app/schemas folder) so every DB version is
