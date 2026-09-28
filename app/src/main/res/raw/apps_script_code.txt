@@ -288,13 +288,15 @@ function folder_(name) {
 
 // ไฟล์สำรองจากแอป (base64) -> โฟลเดอร์ Resort Accounting Backups, เก็บไว้ keep ไฟล์ล่าสุด
 function saveBackup_(b) {
-  const blob = Utilities.newBlob(Utilities.base64Decode(b.data), 'application/zip', b.name);
+  if (!/^resort-backup-[\w.-]+$/.test(String(b.name || ''))) return { ok: false, error: 'ชื่อไฟล์สำรองไม่ถูกต้อง' };
+  const blob = Utilities.newBlob(Utilities.base64Decode(b.data), 'application/octet-stream', b.name);
   const folder = folder_('Resort Accounting Backups');
   const file = folder.createFile(blob);
   const keep = b.keep || 7;
   const files = [];
   const it = folder.getFiles();
-  while (it.hasNext()) files.push(it.next());
+  // Only the app's own backup files are counted and trashed — other files in the folder are never touched.
+  while (it.hasNext()) { const f = it.next(); if (/^resort-backup-/.test(f.getName())) files.push(f); }
   files.sort(function (x, y) { return y.getDateCreated().getTime() - x.getDateCreated().getTime(); });
   files.slice(keep).forEach(function (f) { f.setTrashed(true); });
   return { ok: true, fileId: file.getId(), url: file.getUrl(), kept: Math.min(files.length, keep) };
@@ -392,7 +394,20 @@ function listLineInbox_(b) {
   return { ok: true, items: items };
 }
 
+// ส่งได้เฉพาะไฟล์สลิปที่อยู่ในชีต LineInbox เท่านั้น (กันคนที่ได้ Token ไปใช้เปิดไฟล์อื่นใน Drive)
+function isLineInboxFile_(fileId) {
+  if (!fileId) return false;
+  const sh = inbox_();
+  const last = sh.getLastRow();
+  if (last < 2) return false;
+  const headers = ensureHeaders_(sh, INBOX_HEADERS);
+  const ids = sh.getRange(2, headers.indexOf('file_id') + 1, last - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) if (String(ids[i][0]) === String(fileId)) return true;
+  return false;
+}
+
 function getLineFile_(b) {
+  if (!isLineInboxFile_(b.fileId)) return { ok: false, error: 'ไฟล์นี้ไม่ใช่สลิปจาก LINE' };
   const file = DriveApp.getFileById(b.fileId);
   const blob = file.getBlob();
   return { ok: true, name: file.getName(), mime: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) };

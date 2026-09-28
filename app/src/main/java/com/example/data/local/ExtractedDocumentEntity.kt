@@ -50,7 +50,10 @@ data class ExtractedDocumentEntity(
     val voidReason: String? = null,
     val voidedAt: Long? = null,
     /** SHA-256 of the original file (shared/uploaded image or PDF) to catch the same file imported twice. */
-    val contentHash: String? = null
+    val contentHash: String? = null,
+    // ---- Added in DB version 7 ----
+    /** Bank reference no. of a transfer slip. Two slips with the same reference are the same money. */
+    val referenceNo: String? = null
 ) {
     fun toAccountingDocument(): AccountingDocumentJson {
         val parsedItems = try {
@@ -73,13 +76,15 @@ data class ExtractedDocumentEntity(
             totalAmount = totalAmount,
             depositAmount = depositAmount,
             paymentMethod = paymentMethod,
-            lineItems = parsedItems
+            lineItems = parsedItems,
+            referenceNo = referenceNo
         )
     }
 
     /** Returns a copy whose accounting fields are replaced by [model] (rawJson is kept as-is). */
     fun withFieldsFrom(model: AccountingDocumentJson): ExtractedDocumentEntity = copy(
         documentType = model.documentType ?: "OTHER",
+        // Unknown direction stays empty: a person must choose income/expense before it can count.
         transactionType = model.transactionType ?: "",
         documentNo = model.documentNo,
         date = model.date,
@@ -92,7 +97,8 @@ data class ExtractedDocumentEntity(
         totalAmount = model.totalAmount,
         depositAmount = model.depositAmount,
         paymentMethod = model.paymentMethod,
-        lineItemsJson = lineItemsAdapter.toJson(model.lineItems ?: emptyList())
+        lineItemsJson = lineItemsAdapter.toJson(model.lineItems ?: emptyList()),
+        referenceNo = model.referenceNo?.trim()?.ifEmpty { null }
     )
 
     companion object {
@@ -130,7 +136,8 @@ data class ExtractedDocumentEntity(
                 status = DocumentStatus.PENDING.code,
                 imagePath = imagePath,
                 sourceFilePath = sourceFilePath,
-                contentHash = contentHash
+                contentHash = contentHash,
+                referenceNo = model.referenceNo?.trim()?.ifEmpty { null }
             )
         }
     }
@@ -178,15 +185,26 @@ fun ExtractedDocumentEntity.canVoid(): Boolean =
     sampleId == null && documentStatus() != DocumentStatus.VOIDED &&
         (documentStatus() == DocumentStatus.VERIFIED || verifiedAt != null)
 
+private val REF_LABEL = Regex("""^\s*(ref(erence)?(\s*no)?|txn(\s*id)?|transaction(\s*id)?|เลขที่รายการ|รหัสอ้างอิง|เลขอ้างอิง)\s*[.:#]?\s*""", RegexOption.IGNORE_CASE)
+
+/** "Ref: 0123-ABC 45" -> "0123abc45" (label removed, letters and digits only, lower case) for comparing slip references. */
+fun normalizeReference(ref: String?): String? =
+    ref?.replace(REF_LABEL, "")?.filter { it.isLetterOrDigit() }?.lowercase()?.takeIf { it.length >= 6 }
+
 /**
  * Same document already saved and still active (not rejected / voided):
- * the very same file, or the same no. + total, or the same date + total + seller.
+ * the very same file, the same bank reference no. (transfer slips), the same no. + total,
+ * or the same date + total + seller. Two slips with DIFFERENT reference numbers are never duplicates,
+ * even with the same amount and date (two guests can pay the same price on the same day).
  */
 fun ExtractedDocumentEntity.looksLikeDuplicateOf(other: ExtractedDocumentEntity): Boolean {
     if (other.id == id || other.sampleId != null) return false
     val otherStatus = other.documentStatus()
     if (otherStatus == DocumentStatus.REJECTED || otherStatus == DocumentStatus.VOIDED) return false
     if (!contentHash.isNullOrEmpty() && contentHash == other.contentHash) return true
+    val ref = normalizeReference(referenceNo)
+    val otherRef = normalizeReference(other.referenceNo)
+    if (ref != null && otherRef != null) return ref == otherRef
     val sameTotal = totalAmount != null && other.totalAmount != null &&
         kotlin.math.abs(totalAmount - other.totalAmount) < 0.005
     if (!sameTotal) return false
