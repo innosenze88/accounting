@@ -321,7 +321,7 @@ fun DashboardScreen(
 
         item {
             Text(
-                text = "รายละเอียดจากเอกสารที่สแกน (สลิป / ใบเสร็จ / บิล ที่ยืนยันแล้ว)",
+                text = "เฉพาะเอกสารที่สแกนและยืนยันแล้ว (ไม่รวมยอดจองและกระเป๋าเงิน)",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 8.dp)
@@ -348,7 +348,7 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "ยอดเงินคงเหลือสุทธิ (Net Cash Flow)",
+                            text = "เงินสุทธิจากเอกสารที่ยืนยัน",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = netColor
@@ -378,7 +378,7 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "คำนวณจากรายรับ (${String.format("%,.2f ฿", totalIncome)}) ลบด้วยรายจ่าย (${String.format("%,.2f ฿", totalExpense)})",
+                        text = "รายรับจากเอกสารลบรายจ่ายจากเอกสาร ไม่รวมยอดจอง, eZee และกระเป๋าเงิน",
                         fontSize = 11.sp,
                         color = netColor.copy(alpha = 0.8f)
                     )
@@ -386,13 +386,9 @@ fun DashboardScreen(
             }
         }
 
-        // Primary Stats 3-Grid Cards
+        // Two full-width figures are easier to scan on a phone than a compressed 3-column grid.
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Income Card
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatMetricCard(
                     title = "รายรับรวม",
                     amount = String.format("%,.2f ฿", totalIncome),
@@ -400,10 +396,9 @@ fun DashboardScreen(
                     icon = Icons.AutoMirrored.Filled.TrendingUp,
                     accentColor = Color(0xFF2E7D32),
                     backgroundColor = Color(0xFFE8F5E9),
-                    modifier = Modifier.weight(1f).testTag("dashboard_stat_income")
+                    modifier = Modifier.fillMaxWidth().testTag("dashboard_stat_income")
                 )
 
-                // Expense Card
                 StatMetricCard(
                     title = "รายจ่ายรวม",
                     amount = String.format("%,.2f ฿", totalExpense),
@@ -411,18 +406,7 @@ fun DashboardScreen(
                     icon = Icons.AutoMirrored.Filled.TrendingDown,
                     accentColor = Color(0xFFC62828),
                     backgroundColor = Color(0xFFFFEBEE),
-                    modifier = Modifier.weight(1f).testTag("dashboard_stat_expense")
-                )
-
-                // VAT Card
-                StatMetricCard(
-                    title = "ภาษี VAT 7%",
-                    amount = String.format("%,.2f ฿", totalVat),
-                    subtitle = "รวมภาษีมูลค่าเพิ่ม",
-                    icon = Icons.Default.Percent,
-                    accentColor = Color(0xFF512DA8),
-                    backgroundColor = Color(0xFFEDE7F6),
-                    modifier = Modifier.weight(1f).testTag("dashboard_stat_vat")
+                    modifier = Modifier.fillMaxWidth().testTag("dashboard_stat_expense")
                 )
             }
         }
@@ -607,6 +591,22 @@ fun DashboardScreen(
                             Text("ยอดรวมทั้งสิ้น (Grand Total)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(String.format("%,.2f ฿", totalOverallAmount), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("ภาษี VAT รวม", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            String.format("%,.2f ฿", totalVat),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF512DA8),
+                            modifier = Modifier.testTag("dashboard_stat_vat")
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -836,7 +836,7 @@ private fun StatMetricCard(
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = amount,
-                fontSize = 13.sp,
+                fontSize = 19.sp,
                 fontWeight = FontWeight.Bold,
                 color = accentColor,
                 maxLines = 1,

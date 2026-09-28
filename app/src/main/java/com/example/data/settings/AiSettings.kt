@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONObject
 
 /** Which AI service reads the documents. */
 enum class AiProvider(val code: String, val title: String) {
@@ -25,7 +26,7 @@ data class AiSettings(
     val claudeWorkspaceId: String = "",
     /** Google Apps Script Web App URL (ends with /exec). Empty = Google Sheets off. */
     val sheetsWebAppUrl: String = "",
-    /** Shared secret that must match TOKEN in the Apps Script code. */
+    /** Bearer credential that must match APP_TOKEN in the Apps Script project properties. */
     val sheetsToken: String = "",
     /** Send a document to Google Sheets automatically when it is verified. */
     val sheetsAutoSync: Boolean = true
@@ -56,27 +57,51 @@ data class AiSettings(
 }
 
 /**
- * Stores AI provider settings in app-private SharedPreferences ("ai_settings").
- * The file is excluded from cloud backup and device transfer (see res/xml backup rules).
+ * Stores settings encrypted in app-private SharedPreferences ("ai_settings").
+ * The encrypted file is excluded from cloud backup and device transfer (see res/xml backup rules).
  */
-class AiSettingsRepository(context: Context) {
+class AiSettingsRepository(
+    context: Context,
+    private val cipher: SettingsCipher = AndroidKeystoreSettingsCipher()
+) {
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _settings = MutableStateFlow(load())
     val settings: StateFlow<AiSettings> = _settings.asStateFlow()
 
-    private fun load(): AiSettings = AiSettings(
+    private fun load(): AiSettings {
+        val encrypted = prefs.getString(KEY_ENCRYPTED_SETTINGS, null)
+        if (encrypted != null) {
+            return try {
+                decode(cipher.decrypt(encrypted))
+            } catch (error: Exception) {
+                throw IllegalStateException(
+                    "Saved API credentials cannot be decrypted. The app kept the stored data; do not clear app data unless you accept losing these credentials.",
+                    error
+                )
+            }
+        }
+
+        // First launch creates a token; older installs migrate their plaintext preferences once.
+        val settings = if (LEGACY_KEYS.any(prefs::contains)) readLegacySettings() else {
+            AiSettings(sheetsToken = newToken())
+        }
+        persist(settings)
+        return settings
+    }
+
+    private fun readLegacySettings() = AiSettings(
         provider = AiProvider.fromCode(prefs.getString(KEY_PROVIDER, null)),
         geminiApiKey = prefs.getString(KEY_GEMINI_KEY, "") ?: "",
-        geminiModel = prefs.getString(KEY_GEMINI_MODEL, AiSettings.DEFAULT_GEMINI_MODEL) ?: AiSettings.DEFAULT_GEMINI_MODEL,
+        geminiModel = prefs.getString(KEY_GEMINI_MODEL, AiSettings.DEFAULT_GEMINI_MODEL)
+            ?: AiSettings.DEFAULT_GEMINI_MODEL,
         claudeApiKey = prefs.getString(KEY_CLAUDE_KEY, "") ?: "",
-        claudeModel = prefs.getString(KEY_CLAUDE_MODEL, AiSettings.DEFAULT_CLAUDE_MODEL) ?: AiSettings.DEFAULT_CLAUDE_MODEL,
+        claudeModel = prefs.getString(KEY_CLAUDE_MODEL, AiSettings.DEFAULT_CLAUDE_MODEL)
+            ?: AiSettings.DEFAULT_CLAUDE_MODEL,
         claudeWorkspaceId = prefs.getString(KEY_CLAUDE_WORKSPACE, "") ?: "",
         sheetsWebAppUrl = prefs.getString(KEY_SHEETS_URL, "") ?: "",
-        sheetsToken = prefs.getString(KEY_SHEETS_TOKEN, null) ?: newToken().also {
-            prefs.edit().putString(KEY_SHEETS_TOKEN, it).apply()
-        },
+        sheetsToken = prefs.getString(KEY_SHEETS_TOKEN, null) ?: newToken(),
         sheetsAutoSync = prefs.getBoolean(KEY_SHEETS_AUTO, true)
     )
 
@@ -90,22 +115,47 @@ class AiSettingsRepository(context: Context) {
             sheetsWebAppUrl = settings.sheetsWebAppUrl.trim(),
             sheetsToken = settings.sheetsToken.trim()
         )
-        prefs.edit()
-            .putString(KEY_PROVIDER, clean.provider.code)
-            .putString(KEY_GEMINI_KEY, clean.geminiApiKey)
-            .putString(KEY_GEMINI_MODEL, clean.geminiModel)
-            .putString(KEY_CLAUDE_KEY, clean.claudeApiKey)
-            .putString(KEY_CLAUDE_MODEL, clean.claudeModel)
-            .putString(KEY_CLAUDE_WORKSPACE, clean.claudeWorkspaceId)
-            .putString(KEY_SHEETS_URL, clean.sheetsWebAppUrl)
-            .putString(KEY_SHEETS_TOKEN, clean.sheetsToken)
-            .putBoolean(KEY_SHEETS_AUTO, clean.sheetsAutoSync)
-            .apply()
+        persist(clean)
         _settings.value = clean
+    }
+
+    private fun persist(settings: AiSettings) {
+        val encrypted = cipher.encrypt(encode(settings))
+        val editor = prefs.edit().putString(KEY_ENCRYPTED_SETTINGS, encrypted)
+        LEGACY_KEYS.forEach { editor.remove(it) }
+        check(editor.commit()) { "Could not persist encrypted settings." }
+    }
+
+    private fun encode(settings: AiSettings): String = JSONObject()
+        .put("provider", settings.provider.code)
+        .put("geminiApiKey", settings.geminiApiKey)
+        .put("geminiModel", settings.geminiModel)
+        .put("claudeApiKey", settings.claudeApiKey)
+        .put("claudeModel", settings.claudeModel)
+        .put("claudeWorkspaceId", settings.claudeWorkspaceId)
+        .put("sheetsWebAppUrl", settings.sheetsWebAppUrl)
+        .put("sheetsToken", settings.sheetsToken)
+        .put("sheetsAutoSync", settings.sheetsAutoSync)
+        .toString()
+
+    private fun decode(raw: String): AiSettings {
+        val json = JSONObject(raw)
+        return AiSettings(
+            provider = AiProvider.fromCode(json.optString("provider", "")),
+            geminiApiKey = json.optString("geminiApiKey", ""),
+            geminiModel = json.optString("geminiModel", AiSettings.DEFAULT_GEMINI_MODEL),
+            claudeApiKey = json.optString("claudeApiKey", ""),
+            claudeModel = json.optString("claudeModel", AiSettings.DEFAULT_CLAUDE_MODEL),
+            claudeWorkspaceId = json.optString("claudeWorkspaceId", ""),
+            sheetsWebAppUrl = json.optString("sheetsWebAppUrl", ""),
+            sheetsToken = json.optString("sheetsToken", ""),
+            sheetsAutoSync = json.optBoolean("sheetsAutoSync", true)
+        )
     }
 
     companion object {
         private const val PREFS_NAME = "ai_settings"
+        private const val KEY_ENCRYPTED_SETTINGS = "encrypted_settings_v1"
         private const val KEY_PROVIDER = "provider"
         private const val KEY_GEMINI_KEY = "gemini_api_key"
         private const val KEY_GEMINI_MODEL = "gemini_model"
@@ -115,6 +165,10 @@ class AiSettingsRepository(context: Context) {
         private const val KEY_SHEETS_URL = "sheets_web_app_url"
         private const val KEY_SHEETS_TOKEN = "sheets_token"
         private const val KEY_SHEETS_AUTO = "sheets_auto_sync"
+        private val LEGACY_KEYS = listOf(
+            KEY_PROVIDER, KEY_GEMINI_KEY, KEY_GEMINI_MODEL, KEY_CLAUDE_KEY, KEY_CLAUDE_MODEL,
+            KEY_CLAUDE_WORKSPACE, KEY_SHEETS_URL, KEY_SHEETS_TOKEN, KEY_SHEETS_AUTO
+        )
 
         /** Random 24-character secret for the Apps Script. */
         fun newToken(): String {

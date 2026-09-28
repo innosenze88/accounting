@@ -84,6 +84,7 @@ fun SettingsScreen(
     var draft by remember { mutableStateOf(saved) }
     LaunchedEffect(saved) { draft = saved }
     var savedNotice by remember { mutableStateOf(false) }
+    var showSheetsToken by remember { mutableStateOf(false) }
 
     val isDirty = draft != saved
 
@@ -118,7 +119,7 @@ fun SettingsScreen(
                 model = draft.geminiModel,
                 onModelChange = { draft = draft.copy(geminiModel = it); savedNotice = false },
                 suggestions = AiSettings.GEMINI_MODEL_SUGGESTIONS,
-                extraNote = "ถ้าเว้นว่าง จะใช้ key จาก AI Studio Secrets (ถ้ามี)"
+                extraNote = "API key จะถูกเก็บแบบเข้ารหัสในเครื่องนี้เท่านั้น"
             )
             AiProvider.CLAUDE -> ProviderCard(
                 title = "Anthropic Claude",
@@ -189,11 +190,11 @@ fun SettingsScreen(
         ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "วิธีตั้งค่า (ทำครั้งเดียว)\n" +
-                        "1. กด \"คัดลอกโค้ด Apps Script\" ด้านล่าง\n" +
-                        "2. เปิด Google Sheet → ส่วนขยาย → Apps Script → ลบโค้ดเดิม วางโค้ดที่คัดลอก → บันทึก\n" +
-                        "3. Deploy → New deployment → Web app → Execute as: Me, Who has access: Anyone → Deploy\n" +
-                        "4. คัดลอก URL ที่ลงท้าย /exec มาวางช่องด้านล่าง แล้วกด \"บันทึก & ทดสอบ Sheets\"",
+                    "ตั้งค่า Apps Script\n" +
+                        "1. คัดลอกโค้ดด้านล่างไปวางใน Google Sheet → ส่วนขยาย → Apps Script แล้วบันทึก\n" +
+                        "2. ที่ Apps Script → Project Settings → Script Properties เพิ่ม APP_TOKEN โดยใช้ค่าจากช่องรหัสลับนี้\n" +
+                        "3. Deploy → New deployment → Web app → Execute as: Me, Who has access: Anyone\n" +
+                        "4. วาง URL ที่ลงท้าย /exec ด้านล่าง แล้วกด \"บันทึก & ทดสอบ Sheets\"",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -210,8 +211,17 @@ fun SettingsScreen(
                 OutlinedTextField(
                     value = draft.sheetsToken,
                     onValueChange = { draft = draft.copy(sheetsToken = it); savedNotice = false },
-                    label = { Text("รหัสลับ (Token) — ต้องตรงกับในโค้ด Apps Script") },
+                    label = { Text("รหัสลับ APP_TOKEN") },
                     singleLine = true,
+                    visualTransformation = if (showSheetsToken) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showSheetsToken = !showSheetsToken }) {
+                            Icon(
+                                imageVector = if (showSheetsToken) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showSheetsToken) "ซ่อนรหัสลับ" else "แสดงรหัสลับ"
+                            )
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -220,10 +230,9 @@ fun SettingsScreen(
                             viewModel.saveAiSettings(draft)
                             val code = context.resources.openRawResource(R.raw.apps_script_code)
                                 .bufferedReader(Charsets.UTF_8).use { it.readText() }
-                                .replace("__TOKEN__", draft.sheetsToken)
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("Apps Script", code))
-                            Toast.makeText(context, "คัดลอกโค้ดแล้ว (มีรหัสลับของคุณอยู่ในโค้ด)", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "คัดลอกโค้ดแล้ว (ไม่มีรหัสลับในโค้ด)", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp)
@@ -274,7 +283,7 @@ fun SettingsScreen(
                     )
                 }
                 Text(
-                    "ถ้าแก้ Token ต้องคัดลอกโค้ดไปวางใน Apps Script ใหม่ และ Deploy เวอร์ชันใหม่ด้วย",
+                    "ถ้าเปลี่ยนรหัสลับ ให้แก้ค่า APP_TOKEN ใน Script Properties ให้ตรงกัน ไม่ต้องใส่รหัสไว้ในโค้ด",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -288,8 +297,9 @@ fun SettingsScreen(
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("เรื่องความปลอดภัย", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 Text(
-                    "• API key และ Token เก็บในเครื่องนี้เท่านั้น ไม่ถูกสำรองขึ้น cloud\n" +
-                        "• ใครมี URL + Token ของ Apps Script จะเขียนข้อมูลลง Sheet ได้ อย่าแชร์\n" +
+                    "• API key และรหัส APP_TOKEN เข้ารหัสด้วย Android Keystore และไม่รวมใน backup; อุปกรณ์ใหม่ต้องกรอกใหม่\n" +
+                        "• Apps Script เปิดรับคำขอจากอินเทอร์เน็ต แต่ต้องมี APP_TOKEN; ผู้ที่ได้ทั้ง URL และรหัสสามารถสั่งงาน Sheet/Drive ได้\n" +
+                        "• เก็บ Script Properties และสิทธิ์แก้ไข Apps Script ให้เฉพาะผู้ดูแล อย่าแชร์รหัส และให้เปลี่ยนทันทีหากสงสัยว่ารั่ว\n" +
                         "• รูปเอกสารจะถูกส่งไปยังผู้ให้บริการ AI ที่เลือกเพื่ออ่านข้อมูล\n" +
                         "• ค่าใช้จ่ายการเรียก API คิดกับบัญชีของ key นั้น",
                     fontSize = 12.sp,

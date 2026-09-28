@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,10 +95,17 @@ fun FinanceOverviewCard(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.testTag("finance_overview")) {
         // (1) (2) income, expenses, profit of the period
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            BigTile("รายรับ", o.income, IncomeGreen, Color(0xFFE8F5E9), Modifier.weight(1f))
-            BigTile("รายจ่าย", o.expense, ExpenseRed, Color(0xFFFFEBEE), Modifier.weight(1f))
-            BigTile(if (o.profit >= 0) "กำไร" else "ขาดทุน", o.profit, if (o.profit >= 0) IncomeGreen else ExpenseRed, Color(0xFFE3F2FD), Modifier.weight(1f))
+            BigTile("รายรับรวม", o.income, IncomeGreen, Color(0xFFE8F5E9), Modifier.weight(1f))
+            BigTile("รายจ่ายรวม", o.expense, ExpenseRed, Color(0xFFFFEBEE), Modifier.weight(1f))
         }
+        BigTile(
+            if (o.profit >= 0) "กำไรสุทธิ" else "ขาดทุนสุทธิ",
+            o.profit,
+            if (o.profit >= 0) IncomeGreen else ExpenseRed,
+            Color(0xFFE3F2FD),
+            Modifier.fillMaxWidth(),
+            featured = true
+        )
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("ที่มาของรายรับ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -232,12 +240,25 @@ private fun YearPlanCard(plan: YearPlan?) {
 }
 
 @Composable
-private fun BigTile(title: String, amount: Double, accent: Color, bg: Color, modifier: Modifier) {
+private fun BigTile(
+    title: String,
+    amount: Double,
+    accent: Color,
+    bg: Color,
+    modifier: Modifier,
+    featured: Boolean = false
+) {
     Card(modifier, shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = bg)) {
-        Column(Modifier.padding(10.dp)) {
+        Column(Modifier.padding(if (featured) 14.dp else 12.dp)) {
             Text(title, fontSize = 12.sp, color = accent, fontWeight = FontWeight.SemiBold)
-            Text(baht(amount), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = accent, maxLines = 1)
-            Text("บาท", fontSize = 10.sp, color = accent)
+            Text(
+                "${String.format(Locale.US, "%,.2f", amount)} ฿",
+                fontSize = if (featured) 23.sp else 17.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

@@ -4,10 +4,12 @@
  * วิธีติดตั้ง
  * 1) เปิด Google Sheet ที่ต้องการ -> ส่วนขยาย (Extensions) -> Apps Script
  * 2) ลบโค้ดเดิมทั้งหมด แล้ววางโค้ดนี้ -> กดบันทึก
- * 3) ทำให้ใช้งานได้ (Deploy) -> การทำให้ใช้งานได้รายการใหม่ (New deployment) -> เลือกประเภท "เว็บแอป" (Web app)
+ * 3) Project Settings -> Script Properties: เพิ่ม APP_TOKEN ให้ตรงกับรหัสในแอป
+ *    ถ้าใช้ LINE ให้เก็บ LINE_CHANNEL_ACCESS_TOKEN และ LINE_BOT_USER_ID ใน Script Properties ด้วย
+ * 4) ทำให้ใช้งานได้ (Deploy) -> การทำให้ใช้งานได้รายการใหม่ (New deployment) -> เลือกประเภท "เว็บแอป" (Web app)
  *      เรียกใช้ในฐานะ (Execute as): ฉัน (Me)
  *      ผู้ที่มีสิทธิ์เข้าถึง (Who has access): ทุกคน (Anyone)
- * 4) กดอนุญาตสิทธิ์ แล้วคัดลอก URL ที่ลงท้ายด้วย /exec ไปใส่ในแอป หน้า "ตั้งค่า"
+ * 5) กดอนุญาตสิทธิ์ แล้วคัดลอก URL ที่ลงท้ายด้วย /exec ไปใส่ในแอป หน้า "ตั้งค่า"
  *
  * ถ้าแก้โค้ดภายหลัง: Deploy -> Manage deployments -> แก้ไข (ดินสอ) -> Version: New version -> Deploy
  *
@@ -28,23 +30,40 @@
  * ดึงสลิปจาก LINE (ไม่บังคับ): ดูวิธีตั้งค่าในไฟล์ LINE_SETUP.md ของโปรเจกต์
  */
 
-// ----- ตั้งค่า LINE (เว้นว่างถ้ายังไม่ใช้) -----
-// Channel access token (long-lived) จาก LINE Developers -> Messaging API
-const LINE_CHANNEL_ACCESS_TOKEN = '';
-// User ID ของบอท (Your user ID ในหน้า Basic settings ขึ้นต้นด้วย U...) ใช้กันคนอื่นส่งข้อมูลปลอมเข้ามา
-const LINE_BOT_USER_ID = '';
 // ตอบกลับในกลุ่มเมื่อได้รับรูป (true/false)
 const LINE_REPLY = true;
 
-// รหัสลับ ต้องตรงกับ "รหัสลับ (Token)" ในหน้าตั้งค่าของแอป
-const TOKEN = 'PUT-THE-TOKEN-FROM-THE-APP-SETTINGS-HERE';
+// Secrets must be set in Project Settings -> Script Properties, never in this source file.
+const APP_TOKEN_PROPERTY = 'APP_TOKEN';
+const LINE_WEBHOOK_TOKEN_PROPERTY = 'LINE_WEBHOOK_TOKEN';
 
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
-    // LINE Messaging API webhook (has "destination" + "events", no app token)
-    if (body.destination !== undefined && body.events !== undefined) return json_(lineWebhook_(body));
-    if (body.token !== TOKEN) return json_({ ok: false, error: 'รหัสลับ (Token) ไม่ตรงกับในแอป' });
+    // LINE's signature header is not exposed in the Apps Script web-app event object.
+    // Use a separate random bearer token in the webhook URL; this is not LINE signature verification.
+    if (body.destination !== undefined && Array.isArray(body.events)) {
+      const props = PropertiesService.getScriptProperties();
+      const expectedWebhookToken = props.getProperty(LINE_WEBHOOK_TOKEN_PROPERTY);
+      const suppliedWebhookToken = (e.parameter || {}).lineWebhookToken;
+      if (!expectedWebhookToken || suppliedWebhookToken !== expectedWebhookToken) {
+        return json_({ ok: false, error: 'LINE webhook token is missing or invalid' });
+      }
+      const webhookLock = LockService.getScriptLock();
+      webhookLock.waitLock(30000);
+      try {
+        return json_(lineWebhook_(body));
+      } finally {
+        webhookLock.releaseLock();
+      }
+    }
+    const expectedAppToken = PropertiesService.getScriptProperties().getProperty(APP_TOKEN_PROPERTY);
+    if (!expectedAppToken) {
+      return json_({ ok: false, error: 'APP_TOKEN is not configured in Script Properties' });
+    }
+    if (typeof body.token !== 'string' || body.token !== expectedAppToken) {
+      return json_({ ok: false, error: 'รหัสลับ (Token) ไม่ตรงกับในแอป' });
+    }
     const lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
@@ -216,20 +235,21 @@ function appendTable_(b) {
     const ids = sh.getRange(2, idCol + 1, last - 1, 1).getValues();
     const chunks = sh.getRange(2, chunkCol + 1, last - 1, 1).getValues();
     let sawImport = false;
+    let highestChunk = -1;
     for (let i = 0; i < ids.length; i++) {
       if (String(ids[i][0]) !== String(b.importId)) continue;
       sawImport = true;
-      if (Number(chunks[i][0]) === b.chunkIndex) return { ok: true, rows: 0, duplicate: true };
+      const existingChunk = Number(chunks[i][0]);
+      if (existingChunk === b.chunkIndex) return { ok: true, rows: 0, duplicate: true };
+      highestChunk = Math.max(highestChunk, existingChunk);
     }
-    if (!sawImport) throw new Error('chunk out of order');
+    if (!sawImport || b.chunkIndex !== highestChunk + 1) throw new Error('chunk out of order');
   } else if (b.chunkIndex > 0) {
     throw new Error('chunk out of order');
   }
   const headers = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(b.headers));
   const idx = b.headers.map(function (h) { return headers.indexOf(h); });
-  const idCol = headers.indexOf('import_id');
   const fileCol = headers.indexOf('file_name');
-  const chunkCol = headers.indexOf('chunk_index');
   const values = b.rows.map(function (r) {
     const out = headers.map(function () { return ''; });
     out[idCol] = b.importId;
@@ -292,14 +312,29 @@ function inbox_() {
 }
 
 function lineApi_(url, method, payload) {
-  const opt = { method: method || 'get', headers: { Authorization: 'Bearer ' + LINE_CHANNEL_ACCESS_TOKEN }, muteHttpExceptions: true };
+  const channelToken = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN') || '';
+  const opt = { method: method || 'get', headers: { Authorization: 'Bearer ' + channelToken }, muteHttpExceptions: true };
   if (payload) { opt.contentType = 'application/json'; opt.payload = JSON.stringify(payload); }
   return UrlFetchApp.fetch(url, opt);
 }
 
+// Run once from the Apps Script editor, then copy the generated value from Script Properties
+// into the LINE webhook URL as ?lineWebhookToken=<value>. Never log the value itself.
+function initializeLineWebhookToken() {
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty(LINE_WEBHOOK_TOKEN_PROPERTY)) {
+    const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+    props.setProperty(LINE_WEBHOOK_TOKEN_PROPERTY, token);
+  }
+  Logger.log('LINE_WEBHOOK_TOKEN is ready. Copy it from Project Settings > Script Properties.');
+}
+
 function lineWebhook_(body) {
-  if (!LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, error: 'LINE not configured' };
-  if (LINE_BOT_USER_ID && body.destination !== LINE_BOT_USER_ID) return { ok: false, error: 'wrong destination' };
+  const props = PropertiesService.getScriptProperties();
+  const channelToken = props.getProperty('LINE_CHANNEL_ACCESS_TOKEN') || '';
+  const botUserId = props.getProperty('LINE_BOT_USER_ID') || '';
+  if (!channelToken || !botUserId) return { ok: false, error: 'LINE credentials are not configured in Script Properties' };
+  if (body.destination !== botUserId) return { ok: false, error: 'wrong destination' };
   const sh = inbox_();
   const headers = ensureHeaders_(sh, INBOX_HEADERS);
   let saved = 0;
