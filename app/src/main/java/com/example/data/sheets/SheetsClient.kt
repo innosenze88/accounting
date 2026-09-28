@@ -20,6 +20,14 @@ class SheetsClient {
     companion object {
         /** Apps Script accepts requests up to about 50 MB; base64 adds a third. */
         const val MAX_BACKUP_UPLOAD = 30L * 1024 * 1024
+
+        private val RESERVED_SHEETS = setOf("accounting", "voided", "lineinbox")
+
+        /** True for sheets the app writes itself (Accounting, Voided, LineInbox, eZee_*); imports must not use them. */
+        fun isReservedSheet(name: String): Boolean {
+            val n = name.trim().lowercase()
+            return n.startsWith("ezee_") || n in RESERVED_SHEETS
+        }
     }
 
     private val client = OkHttpClient.Builder()

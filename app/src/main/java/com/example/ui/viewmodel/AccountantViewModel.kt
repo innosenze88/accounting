@@ -851,6 +851,11 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
     fun saveTable(sheetName: String) {
         val pending = _pendingImport.value ?: return
         val table = pending.table ?: return
+        val target = sheetName.trim().ifBlank { "Import" }
+        if (SheetsClient.isReservedSheet(target)) {
+            _importMessage.value = "✕ ชื่อแผ่นงาน \"$target\" ใช้โดยแอปอยู่แล้ว ตั้งชื่ออื่น"
+            return
+        }
         viewModelScope.launch {
             _isImportBusy.value = true
             try {
@@ -865,7 +870,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                         reportDate = null,
                         extractedJson = null,
                         rowCount = table.rows.size,
-                        targetSheet = sheetName.trim().ifBlank { "Import" },
+                        targetSheet = target,
                         status = ImportStatus.SAVED.code,
                         errorMessage = null,
                         sheetSyncedAt = null
