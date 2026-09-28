@@ -179,9 +179,10 @@ function upsertReport_(r) {
   upsertRow_(sheet_('eZee_Reports'), summary, 'app_id');
 
   const rows = r.rows || [];
+  const sh = sheet_('eZee_' + (r.report_type || 'other'));
+  // Always remove the previous detail rows, including when the new report is empty.
+  deleteRowsWhere_(sh, 'app_id', r.app_id);
   if (rows.length) {
-    const sh = sheet_('eZee_' + (r.report_type || 'other'));
-    deleteRowsWhere_(sh, 'app_id', r.app_id);
     const keys = ['app_id', 'report_date'];
     rows.forEach(function (o) {
       Object.keys(o).forEach(function (k) { if (keys.indexOf(k) === -1) keys.push(k); });
@@ -199,23 +200,55 @@ function upsertReport_(r) {
   return { ok: true, rows: rows.length };
 }
 
-// CSV / Excel rows. Sent in chunks; chunk 0 first removes rows of an earlier send of the same file.
+// CSV / Excel rows. Chunks are ordered and idempotent per importId/chunkIndex.
 function appendTable_(b) {
+  if (!b || typeof b.importId !== 'string' || !b.importId || !Array.isArray(b.headers) || !Array.isArray(b.rows) || !Number.isInteger(b.chunkIndex) || b.chunkIndex < 0) {
+    throw new Error('invalid table chunk');
+  }
   const sh = sheet_(b.sheetName);
-  if (b.chunkIndex === 0) deleteRowsWhere_(sh, 'import_id', b.importId);
-  const headers = ensureHeaders_(sh, ['import_id', 'file_name'].concat(b.headers));
+  const existingHeaders = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(b.headers));
+  const idCol = existingHeaders.indexOf('import_id');
+  const chunkCol = existingHeaders.indexOf('chunk_index');
+  const last = sh.getLastRow();
+  if (b.chunkIndex === 0) {
+    deleteRowsWhere_(sh, 'import_id', b.importId);
+  } else if (last > 1) {
+    const ids = sh.getRange(2, idCol + 1, last - 1, 1).getValues();
+    const chunks = sh.getRange(2, chunkCol + 1, last - 1, 1).getValues();
+    let sawImport = false;
+    for (let i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]) !== String(b.importId)) continue;
+      sawImport = true;
+      if (Number(chunks[i][0]) === b.chunkIndex) return { ok: true, rows: 0, duplicate: true };
+    }
+    if (!sawImport) throw new Error('chunk out of order');
+  } else if (b.chunkIndex > 0) {
+    throw new Error('chunk out of order');
+  }
+  const headers = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(b.headers));
   const idx = b.headers.map(function (h) { return headers.indexOf(h); });
   const idCol = headers.indexOf('import_id');
   const fileCol = headers.indexOf('file_name');
+  const chunkCol = headers.indexOf('chunk_index');
   const values = b.rows.map(function (r) {
     const out = headers.map(function () { return ''; });
     out[idCol] = b.importId;
     out[fileCol] = b.fileName;
+    out[chunkCol] = b.chunkIndex;
     r.forEach(function (v, i) { if (idx[i] >= 0) out[idx[i]] = cell_(v); });
     return out;
   });
   if (values.length) sh.getRange(sh.getLastRow() + 1, 1, values.length, headers.length).setValues(values);
   return { ok: true, rows: values.length };
+}
+
+
+function inboxHasId_(sh, headers, id) {
+  const idCol = headers.indexOf('id');
+  const last = sh.getLastRow();
+  if (idCol < 0 || last < 2) return false;
+  const values = sh.getRange(2, idCol + 1, last - 1, 1).getValues();
+  return values.some(function (row) { return String(row[0]) === String(id); });
 }
 
 // ---------------------------------------------------------------- Google Drive
@@ -275,6 +308,8 @@ function lineWebhook_(body) {
     const type = ev.message.type;
     if (type !== 'image' && type !== 'file') return;
     if (type === 'file' && !/\.pdf$/i.test(ev.message.fileName || '')) return;
+    const inboxId = 'LINE-' + ev.message.id;
+    if (inboxHasId_(sh, headers, inboxId)) return;
     const res = lineApi_('https://api-data.line.me/v2/bot/message/' + ev.message.id + '/content');
     if (res.getResponseCode() !== 200) return;
     const blob = res.getBlob();
@@ -291,7 +326,7 @@ function lineWebhook_(body) {
       if (p.getResponseCode() === 200) sender = JSON.parse(p.getContentText()).displayName || '';
     } catch (err) { /* profile is optional */ }
     const row = {
-      id: 'LINE-' + ev.message.id, received_at: new Date(ev.timestamp), source_type: src.type || '',
+      id: inboxId, received_at: new Date(ev.timestamp), source_type: src.type || '',
       group_id: src.groupId || '', user_id: src.userId || '', sender_name: sender, message_type: type,
       file_id: file.getId(), file_name: name, mime: blob.getContentType(), status: 'NEW'
     };
