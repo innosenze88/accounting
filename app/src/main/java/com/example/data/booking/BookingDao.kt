@@ -74,6 +74,21 @@ interface WalletDao {
     @Query("UPDATE wallet_txns SET transferredAt = :time WHERE walletId = :walletId AND transferredAt IS NULL AND voidedAt IS NULL AND kind != 'EXPENSE'")
     suspend fun markTransferred(walletId: Long, time: Long)
 
+    @Query("SELECT * FROM wallet_percent_changes ORDER BY changedAt DESC, id DESC")
+    fun observePercentChanges(): Flow<List<WalletPercentChangeEntity>>
+
+    @Insert
+    suspend fun insertPercentChange(c: WalletPercentChangeEntity): Long
+
+    @Query("DELETE FROM day_closes WHERE date = :date")
+    suspend fun deleteDayClose(date: String)
+
+    @Insert
+    suspend fun insertAudit(a: AuditLogEntity): Long
+
+    @Query("SELECT * FROM audit_log ORDER BY at DESC, id DESC")
+    fun observeAudit(): Flow<List<AuditLogEntity>>
+
     @Query("SELECT * FROM day_closes ORDER BY date DESC")
     fun observeDayCloses(): Flow<List<DayCloseEntity>>
 

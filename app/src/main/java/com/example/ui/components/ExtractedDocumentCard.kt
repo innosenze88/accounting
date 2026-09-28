@@ -276,6 +276,14 @@ fun ExtractedDocumentCard(
                     )
                 }
             }
+            if (!doc.referenceNo.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "เลขอ้างอิงธนาคาร: ${doc.referenceNo}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
         }
     }
 }

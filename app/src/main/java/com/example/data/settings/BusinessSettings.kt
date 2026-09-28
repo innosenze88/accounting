@@ -27,7 +27,9 @@ data class BusinessSettings(
     /** Text at the bottom of receipts. */
     val footer: String = "ขอบคุณที่ใช้บริการ",
     /** Wallet ids that count as profit (savings, owner) in the yearly plan; null = default rule. */
-    val profitWallets: String? = null
+    val profitWallets: String? = null,
+    /** The resort's bank accounts (free text) — told to the AI so it knows which transfers are income. */
+    val bankAccounts: String = ""
 ) {
     val profitWalletIds: Set<Long>? get() = profitWallets?.split(",")?.mapNotNull { it.trim().toLongOrNull() }?.toSet()
     val roomList: List<String> get() = rooms.split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -38,6 +40,7 @@ data class BusinessSettings(
         put("promptPayId", promptPayId); put("vatRegistered", vatRegistered); put("vatRate", vatRate)
         put("pricesIncludeVat", pricesIncludeVat); put("refundPercent", refundPercent); put("rooms", rooms); put("footer", footer)
         if (profitWallets != null) put("profitWallets", profitWallets)
+        put("bankAccounts", bankAccounts)
     }
 
     companion object {
@@ -51,7 +54,8 @@ data class BusinessSettings(
                 pricesIncludeVat = o.optBoolean("pricesIncludeVat", d.pricesIncludeVat),
                 refundPercent = o.optDouble("refundPercent", d.refundPercent), rooms = o.optString("rooms", d.rooms),
                 footer = o.optString("footer", d.footer),
-                profitWallets = if (o.has("profitWallets")) o.optString("profitWallets") else null
+                profitWallets = if (o.has("profitWallets")) o.optString("profitWallets") else null,
+                bankAccounts = o.optString("bankAccounts", d.bankAccounts)
             )
         }
     }
@@ -77,6 +81,11 @@ class BusinessSettingsRepository(context: Context) {
     companion object {
         const val PREFS_NAME = "business_settings"
         private const val KEY = "json"
+
+        /** Current settings straight from storage (always fresh, whichever screen saved them). */
+        fun read(context: Context): BusinessSettings =
+            context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY, null)
+                ?.let { runCatching { BusinessSettings.fromJson(JSONObject(it)) }.getOrNull() } ?: BusinessSettings()
 
         /** Writes settings straight into the prefs file (used by restore, before the app restarts). */
         fun importJson(context: Context, json: String) {

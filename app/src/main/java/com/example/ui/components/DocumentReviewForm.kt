@@ -91,6 +91,7 @@ fun DocumentReviewForm(
     var total by rememberSaveable(formKey) { mutableStateOf(initial.totalAmount.toInput()) }
     var deposit by rememberSaveable(formKey) { mutableStateOf(initial.depositAmount.toInput()) }
     var paymentMethod by rememberSaveable(formKey) { mutableStateOf(initial.paymentMethod ?: "") }
+    var referenceNo by rememberSaveable(formKey) { mutableStateOf(initial.referenceNo ?: "") }
 
     val subtotalVal = parseAmount(subtotal)
     val vatVal = parseAmount(vat)
@@ -173,6 +174,7 @@ fun DocumentReviewForm(
             Field("ลูกค้า", customerName) { customerName = it }
             Field("เลขผู้เสียภาษีลูกค้า", customerTaxId, KeyboardType.Number) { customerTaxId = it }
             Field("วิธีชำระเงิน", paymentMethod) { paymentMethod = it }
+            Field("เลขอ้างอิงธนาคาร (สลิปโอน)", referenceNo) { referenceNo = it }
 
             SectionLabel("ยอดเงิน (บาท)")
             Field("มูลค่าก่อน VAT", subtotal, KeyboardType.Decimal) { subtotal = it }
@@ -212,7 +214,8 @@ fun DocumentReviewForm(
                                 vatAmount = vatVal,
                                 totalAmount = totalVal,
                                 depositAmount = depositVal,
-                                paymentMethod = paymentMethod.trim().ifEmpty { null }
+                                paymentMethod = paymentMethod.trim().ifEmpty { null },
+                                referenceNo = referenceNo.trim().ifEmpty { null }
                             )
                         )
                     },

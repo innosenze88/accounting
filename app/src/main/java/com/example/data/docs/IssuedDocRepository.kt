@@ -82,9 +82,18 @@ class IssuedDocRepository(context: Context, private val db: AppDatabase) {
             )
             entity.copy(id = dao.insert(entity))
         }
-        val pdf = File(dir, "${saved.number}.pdf")
-        withContext(Dispatchers.IO) { writer.write(content(saved, copy = false), pdf) }
-        val withPdf = saved.copy(pdfPath = pdf.absolutePath)
+        // The number is taken even if the PDF fails; the PDF is made again the first time it is shared.
+        return runCatching { writeOriginal(saved) }.getOrElse { saved }
+    }
+
+    /** Writes the original PDF of [d] (e.g. again when the file went missing) and stores its path. */
+    private suspend fun writeOriginal(d: IssuedDocumentEntity): IssuedDocumentEntity {
+        val pdf = File(dir, "${d.number}.pdf")
+        withContext(Dispatchers.IO) {
+            dir.mkdirs()
+            writer.write(content(d, copy = false), pdf)
+        }
+        val withPdf = d.copy(pdfPath = pdf.absolutePath)
         dao.update(withPdf)
         return withPdf
     }
@@ -96,17 +105,22 @@ class IssuedDocRepository(context: Context, private val db: AppDatabase) {
         check(d.isActive) { "เอกสารนี้ยกเลิกไปแล้ว" }
         val voided = d.copy(voidedAt = System.currentTimeMillis(), voidReason = reason.trim())
         dao.update(voided)
-        d.pdfPath?.let { path -> withContext(Dispatchers.IO) { writer.write(content(voided, copy = false), File(path)) } }
-        return voided
+        // Re-draw the original with the "ยกเลิก" stamp (also creates it if it was missing).
+        return runCatching { writeOriginal(voided) }.getOrElse { voided }
     }
 
     /**
      * File to share/print. The first time: the original. After that: a copy marked "สำเนา".
      */
     suspend fun fileForSharing(id: Long): File {
-        val d = requireNotNull(dao.get(id)) { "ไม่พบเอกสาร" }
-        val original = d.pdfPath?.let { File(it) }?.takeIf { it.exists() }
-        if (d.copies == 0 && original != null) {
+        var d = requireNotNull(dao.get(id)) { "ไม่พบเอกสาร" }
+        var original = d.pdfPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+        if (original == null) {
+            // PDF failed when issued, or the file was lost: make the original again from the stored data.
+            d = writeOriginal(d)
+            original = File(d.pdfPath!!)
+        }
+        if (d.copies == 0) {
             dao.update(d.copy(copies = 1))
             return original
         }

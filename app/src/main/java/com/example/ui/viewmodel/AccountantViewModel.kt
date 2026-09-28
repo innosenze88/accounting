@@ -267,7 +267,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         _isDemoResult.value = true
         if (provider != null) {
             val (service, key, model) = provider
-            val result = service.extract(DocumentInput.Image(bitmap), key, model)
+            val result = service.extract(DocumentInput.Image(bitmap), key, model, businessContext())
             result.fold(
                 onSuccess = { (doc, raw) ->
                     _extractedDocument.value = doc
@@ -293,7 +293,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
         val (service, key, model) = provider
         // Uploaded PDFs go to the AI as the original file (all pages); photos go as images.
         val input = if (pdf != null) DocumentInput.Pdf(pdf.bytes) else DocumentInput.Image(bitmap)
-        val result = service.extract(input, key, model)
+        val result = service.extract(input, key, model, businessContext())
         result.fold(
             onSuccess = { (doc, raw) ->
                 _extractedDocument.value = doc
@@ -1404,7 +1404,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                 ?: throw IllegalArgumentException("เปิดรูปภาพไม่ได้")
             input = DocumentInput.Image(evidence)
         }
-        val (doc, raw) = service.extract(input, key, model).getOrThrow()
+        val (doc, raw) = service.extract(input, key, model, businessContext()).getOrThrow()
         val imagePath = repository.saveImage(evidence)
         val sourcePath = if (file.kind == FileKind.PDF) repository.saveFile(file.bytes, file.extension) else null
         repository.savePendingDocument(doc, raw, imagePath, sourcePath, ContentHash.sha256(file.bytes))
@@ -1437,7 +1437,7 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                 val settings = settingsRepository.settings.value
                 for (id in ids) {
                     val entity = repository.getDocumentById(id)
-                    if (entity == null || entity.quickVerifyProblem() != null) {
+                    if (entity == null || entity.documentStatus() != DocumentStatus.PENDING || entity.quickVerifyProblem() != null) {
                         skipped++
                         continue
                     }
@@ -1465,6 +1465,12 @@ class AccountantViewModel(application: Application) : AndroidViewModel(applicati
                 _isImportBusy.value = false
             }
         }
+    }
+
+    /** Who "we" are, for the AI (read fresh: the resort details may have just been edited on another screen). */
+    private fun businessContext(): String {
+        val b = com.example.data.settings.BusinessSettingsRepository.read(getApplication())
+        return com.example.data.network.BusinessPrompt.context(b.name, b.taxId, b.promptPayId, b.bankAccounts)
     }
 
     companion object {

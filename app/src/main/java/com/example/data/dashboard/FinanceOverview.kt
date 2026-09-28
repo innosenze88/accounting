@@ -91,8 +91,13 @@ object FinanceOverviewCalc {
             !(it.sourceType == TxnSource.DOCUMENT.code && it.sourceId != null && it.sourceId in countedExpenseDocIds)
     }
 
-    private fun docIncomeCounts(d: CountedDoc, closedDays: Set<String>): Boolean =
-        d.isIncome && !(d.isEzeeReport && d.date != null && d.date in closedDays)
+    /**
+     * An income document counts unless its money is already counted elsewhere:
+     *  - an eZee report of a day that was closed (that money is in the day close), or
+     *  - a slip attached to a direct-booking payment ([linkedSlipIds]) — that money is counted by the booking.
+     */
+    private fun docIncomeCounts(d: CountedDoc, closedDays: Set<String>, linkedSlipIds: Set<Long>): Boolean =
+        d.isIncome && d.id !in linkedSlipIds && !(d.isEzeeReport && d.date != null && d.date in closedDays)
 
     fun build(
         docs: List<CountedDoc>,
@@ -102,7 +107,9 @@ object FinanceOverviewCalc {
         closedDays: Set<String>,
         period: ReportPeriod,
         today: String,
-        profitWalletIds: Set<Long>?
+        profitWalletIds: Set<Long>?,
+        /** Scanned slips attached to an active direct-booking payment (never counted twice). */
+        linkedSlipIds: Set<Long> = emptySet()
     ): FinanceOverview {
         val active = wallets.filter { it.active }.sortedBy { it.sortOrder }
         val advance = active.firstOrNull { it.walletRole == WalletRole.ADVANCE }
@@ -114,7 +121,7 @@ object FinanceOverviewCalc {
         val inc = incomeTxns(txns, advance?.id).filter { inPeriod(it.date, it.createdAt) }
         val incomeEzee = inc.filter { it.sourceType == TxnSource.EZEE.code }.sumOf { it.amount }
         val incomeBookings = inc.filter { it.sourceType != TxnSource.EZEE.code }.sumOf { it.amount }
-        val incomeDocs = docs.filter { docIncomeCounts(it, closedDays) && inPeriod(it.date, it.createdAt) }.sumOf { it.amount }
+        val incomeDocs = docs.filter { docIncomeCounts(it, closedDays, linkedSlipIds) && inPeriod(it.date, it.createdAt) }.sumOf { it.amount }
         val expWallets = expenseTxns(txns, countedExpenseIds).filter { inPeriod(it.date, it.createdAt) }.sumOf { -it.amount }
         val expDocs = docs.filter { it.isExpense && inPeriod(it.date, it.createdAt) }.sumOf { it.amount }
 
@@ -136,7 +143,7 @@ object FinanceOverviewCalc {
             toCollect = round(due.sum()), toCollectBookings = due.size,
             wallets = lines,
             percentTotal = splitting.sumOf { it.percent },
-            plan = yearPlan(docs, txns, advance?.id, closedDays, countedExpenseIds, splitting, isProfit, today)
+            plan = yearPlan(docs, txns, advance?.id, closedDays, countedExpenseIds, splitting, isProfit, today, linkedSlipIds)
         )
     }
 
@@ -154,14 +161,15 @@ object FinanceOverviewCalc {
         countedExpenseIds: Set<Long>,
         splitting: List<WalletEntity>,
         isProfit: (WalletEntity) -> Boolean,
-        today: String
+        today: String,
+        linkedSlipIds: Set<Long> = emptySet()
     ): YearPlan? {
         val year = today.take(4)
         val month = today.take(7)
         val byMonth = HashMap<String, Double>()
         fun add(ym: String, v: Double) { if (ym.take(4) == year) byMonth[ym] = (byMonth[ym] ?: 0.0) + v }
         incomeTxns(txns, advanceId).forEach { add(dateOf(it.date, it.createdAt).take(7), it.amount) }
-        docs.filter { docIncomeCounts(it, closedDays) }.forEach { add(dateOf(it.date, it.createdAt).take(7), it.amount) }
+        docs.filter { docIncomeCounts(it, closedDays, linkedSlipIds) }.forEach { add(dateOf(it.date, it.createdAt).take(7), it.amount) }
 
         val incomeSoFar = byMonth.filterKeys { it <= month }.values.sum()
         val expenseSoFar =

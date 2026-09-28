@@ -490,9 +490,16 @@ fun ScannerScreen(
                             Text("ยกเลิกรายการ (ต้องใส่เหตุผล)", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
-                    if (record != null && !isDemoResult && recordStatus != DocumentStatus.PENDING &&
-                        recordStatus != DocumentStatus.VOIDED
-                    ) {
+                    if (record != null && !isDemoResult && recordStatus == DocumentStatus.VERIFIED) {
+                        Text(
+                            "ถ้าข้อมูลผิด: กด \"ยกเลิกรายการ\" (ใส่เหตุผล) แล้วสแกน/นำเข้าไฟล์เดิมใหม่",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    // Only a rejected document can be sent back for review. A counted one is voided with a reason.
+                    if (record != null && !isDemoResult && recordStatus == DocumentStatus.REJECTED) {
                         Spacer(modifier = Modifier.height(10.dp))
                         OutlinedButton(
                             onClick = { viewModel.reopenCurrent() },
@@ -503,7 +510,7 @@ fun ScannerScreen(
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("แก้ไข / ส่งกลับไปตรวจใหม่", fontSize = 13.sp)
+                            Text("ส่งกลับไปตรวจใหม่", fontSize = 13.sp)
                         }
                     }
                 }

@@ -69,6 +69,35 @@ class FinanceOverviewTest {
     }
 
     @Test
+    fun `a slip attached to a booking payment is not counted again`() {
+        // Document 9 (400) is the transfer slip of a direct-booking payment: the booking counts that money.
+        val o = FinanceOverviewCalc.build(
+            docs, txns, wallets, bookings, setOf("2026-09-11"), ReportPeriod.THIS_MONTH, today, null, linkedSlipIds = setOf(9L)
+        )
+        assertEquals(0.0, o.incomeDocuments, 0.001)
+        assertEquals(4000.0, o.income, 0.001)
+        assertEquals(34000.0, o.plan!!.incomeSoFar, 0.001)
+    }
+
+    @Test
+    fun `slip choices put the matching slip first and hide attached ones`() {
+        val options = listOf(
+            BookingRules.SlipOption(1, 1500.0, "2026-09-01", "a"),
+            BookingRules.SlipOption(2, 2000.0, "2026-09-24", "b"),
+            BookingRules.SlipOption(3, 2000.0, "2026-09-10", "c"),
+            BookingRules.SlipOption(4, 2000.0, "2026-09-25", "d")
+        )
+        val choices = BookingRules.slipChoices(options, linked = setOf(4L), amount = 2000.0, date = "2026-09-25")
+        assertEquals(listOf(2L, 3L, 1L), choices.map { it.documentId })
+        assertTrue(BookingRules.isLikelySlip(options[1], 2000.0, "2026-09-25"))
+        assertTrue(!BookingRules.isLikelySlip(options[2], 2000.0, "2026-09-25")) // 15 days away
+        val paid = com.example.data.booking.BookingPaymentEntity(
+            id = 1, bookingId = 1, kind = "DEPOSIT", method = "TRANSFER", amount = 1.0, date = today, slipDocumentId = 5
+        )
+        assertEquals(setOf(5L), BookingRules.linkedSlipIds(listOf(paid, paid.copy(id = 2, slipDocumentId = 6, voidedAt = 1L))))
+    }
+
+    @Test
     fun `deposits held and money to collect are shown apart`() {
         val o = build(ReportPeriod.THIS_MONTH)
         assertEquals(2000.0, o.advance, 0.001)

@@ -19,6 +19,8 @@ class BookingRepository(private val db: AppDatabase) {
     val walletsFlow: Flow<List<WalletEntity>> = wallets.observeWallets()
     val txnsFlow: Flow<List<WalletTxnEntity>> = wallets.observeTxns()
     val dayClosesFlow: Flow<List<DayCloseEntity>> = wallets.observeDayCloses()
+    val percentChangesFlow: Flow<List<WalletPercentChangeEntity>> = wallets.observePercentChanges()
+    val auditFlow: Flow<List<AuditLogEntity>> = wallets.observeAudit()
 
     /** Creates the advance wallet + 8 wallets the first time (names and % can be changed later). */
     suspend fun ensureDefaultWallets() {
@@ -36,12 +38,13 @@ class BookingRepository(private val db: AppDatabase) {
 
     // ------------------------------------------------------------------ bookings
 
-    suspend fun saveBooking(b: BookingEntity): Long {
+    /** Checks and saves in one transaction, so two quick taps can never book the same room twice. */
+    suspend fun saveBooking(b: BookingEntity): Long = db.withTransaction {
         BookingRules.bookingProblem(b.guestName, b.roomNo, b.checkIn, b.checkOut, b.totalAmount)?.let { error(it) }
         BookingRules.overlapping(b, bookings.getAllBookings())?.let {
             error("ห้อง ${b.roomNo} มีการจองของ ${it.guestName} (${it.checkIn} ถึง ${it.checkOut}) ทับวันกันอยู่")
         }
-        return if (b.id == 0L) {
+        if (b.id == 0L) {
             bookings.insertBooking(b)
         } else {
             val current = requireNotNull(bookings.getBooking(b.id)) { "ไม่พบการจอง" }
@@ -74,6 +77,12 @@ class BookingRepository(private val db: AppDatabase) {
         check(b.bookingStatus != BookingStatus.CANCELLED) { "การจองนี้ยกเลิกแล้ว" }
         // After check-out there is no advance any more: late money is a normal payment split at once.
         val realKind = if (kind == PaymentKind.DEPOSIT && b.settledAt != null) PaymentKind.BALANCE else kind
+        if (slipDocumentId != null) {
+            val doc = requireNotNull(db.documentDao().getDocumentById(slipDocumentId)) { "ไม่พบสลิปที่เลือก" }
+            check(doc.status != "VOIDED" && doc.status != "REJECTED") { "สลิปนี้ถูกยกเลิก/ปฏิเสธไปแล้ว" }
+            val other = bookings.getAllPayments().firstOrNull { it.isActive && it.slipDocumentId == slipDocumentId }
+            check(other == null) { "สลิปนี้ผูกกับการรับเงินอื่นไปแล้ว (รายการ #${other?.id})" }
+        }
         val payment = BookingPaymentEntity(
             bookingId = bookingId, kind = realKind.code, method = method.code, amount = amount, date = date,
             note = note, slipDocumentId = slipDocumentId
@@ -127,7 +136,7 @@ class BookingRepository(private val db: AppDatabase) {
                 bookings.insertPayment(
                     BookingPaymentEntity(
                         bookingId = bookingId, kind = PaymentKind.REFUND.code, method = method.code,
-                        amount = c.refund, date = date, note = "คืนมัดจำ ${refundPercent.toInt()}% — $reason"
+                        amount = c.refund, date = date, note = "คืนเงิน ${refundPercent.toInt()}% ของที่จ่ายมา ${String.format(java.util.Locale.US, "%,.2f", c.paid)} — $reason"
                     )
                 )
             }
@@ -144,13 +153,42 @@ class BookingRepository(private val db: AppDatabase) {
 
     // ------------------------------------------------------------------ wallets
 
-    /** Saves names / % / targets. The budget + savings % must add up to 100. */
-    suspend fun saveWallets(list: List<WalletEntity>) = db.withTransaction {
+    /**
+     * Saves names / % / targets. The budget + savings % must add up to 100.
+     * When a % changes, [reason] is required and the change is kept in the history (wallet_percent_changes).
+     * New % apply to income split from now on; money already split is not moved.
+     * Returns the saved change, or null when no % changed.
+     */
+    suspend fun saveWallets(list: List<WalletEntity>, reason: String = ""): WalletPercentChangeEntity? = db.withTransaction {
         val splitting = list.filter { it.active && it.walletRole != WalletRole.ADVANCE }
         WalletMath.percentProblem(splitting.map { it.percent })?.let { error(it) }
         check(list.count { it.walletRole == WalletRole.SAVINGS && it.active } == 1) { "ต้องมีกระเป๋าเงินเก็บ 1 ใบ" }
         check(list.count { it.walletRole == WalletRole.ADVANCE } == 1) { "ต้องมีกระเป๋าเงินจองล่วงหน้า 1 ใบ" }
+        val before = wallets.getWallets()
+        // A wallet that still holds money cannot be switched off (the money would disappear from the screen).
+        val balances = BookingRules.balances(wallets.getAllTxns())
+        list.filter { !it.active && it.id != 0L }.forEach { w ->
+            val wasActive = before.firstOrNull { it.id == w.id }?.active == true
+            val bal = balances[w.id] ?: 0.0
+            check(!wasActive || kotlin.math.abs(bal) < 0.005) {
+                "ปิดกระเป๋า \"${w.name}\" ไม่ได้ ยังมีเงิน ${String.format(java.util.Locale.US, "%,.2f", bal)} บาท — ย้าย/จ่ายออกก่อน"
+            }
+        }
+        val diffs = WalletPercentRules.diff(before, list)
+        WalletPercentRules.changeProblem(diffs, reason)?.let { error(it) }
         list.forEach { w -> if (w.id == 0L) wallets.insertWallet(w) else wallets.updateWallet(w) }
+        if (diffs.isEmpty()) {
+            null
+        } else {
+            val saved = wallets.getWallets()
+            val change = WalletPercentChangeEntity(
+                reason = reason.trim(),
+                summary = WalletPercentRules.describe(WalletPercentRules.diff(before, saved)),
+                beforePercents = WalletPercentRules.encode(before),
+                afterPercents = WalletPercentRules.encode(saved)
+            )
+            change.copy(id = wallets.insertPercentChange(change))
+        }
     }
 
     /** Pays an expense from a wallet (electricity bill, salaries...). */
@@ -173,8 +211,10 @@ class BookingRepository(private val db: AppDatabase) {
 
     /** Month end: leftovers of every budget wallet move to savings. Only once per month. */
     suspend fun closeMonth(yearMonth: String, date: String): Double = db.withTransaction {
-        val sourceId = yearMonth.replace("-", "").toLong()
-        check(wallets.getTxnsForSource(TxnSource.MONTH_END.code, sourceId).none { it.isActive }) { "ปิดเดือน $yearMonth ไปแล้ว" }
+        val sourceId = BookingRules.monthSourceId(yearMonth)
+        check(BookingRules.outstanding(wallets.getTxnsForSource(TxnSource.MONTH_END.code, sourceId), BookingRules.MONTH_END_KINDS).isEmpty()) {
+            "ปิดเดือน $yearMonth ไปแล้ว"
+        }
         val txns = BookingRules.monthEnd(setup(), BookingRules.balances(wallets.getAllTxns()), yearMonth, date)
         wallets.insertTxns(txns)
         txns.filter { it.amount > 0 }.sumOf { it.amount }
@@ -204,6 +244,66 @@ class BookingRepository(private val db: AppDatabase) {
             )
         )
     }
+
+    /**
+     * Undoes a day close (e.g. the eZee amount was typed wrong): the eZee split of that day is reversed
+     * (voided if not moved in MAKE yet, otherwise an opposite movement to transfer back), the close is removed
+     * so the day can be closed again, and the undo is kept in the audit log.
+     */
+    suspend fun undoDayClose(date: String, reason: String) = db.withTransaction {
+        require(reason.isNotBlank()) { "ต้องใส่เหตุผล" }
+        val close = requireNotNull(wallets.getDayClose(date)) { "วันที่ $date ยังไม่ได้ปิดยอด" }
+        val now = System.currentTimeMillis()
+        val open = BookingRules.outstanding(
+            wallets.getTxnsForSource(TxnSource.EZEE.code, BookingRules.daySourceId(date)), setOf(WalletTxnKind.ALLOCATION)
+        )
+        val (toVoid, opposite) = BookingRules.reverse(open, today(), now)
+        if (toVoid.isNotEmpty()) wallets.updateTxns(toVoid)
+        if (opposite.isNotEmpty()) wallets.insertTxns(opposite)
+        wallets.deleteDayClose(date)
+        wallets.insertAudit(
+            AuditLogEntity(
+                at = now, action = "UNDO_DAY_CLOSE", reason = reason.trim(),
+                detail = "ยกเลิกปิดยอด $date: รายได้ eZee ${money(close.ezeeIncome)} บาท" +
+                    (close.cashCounted?.let { ", นับเงินสดได้ ${money(it)}" } ?: "") +
+                    (if (opposite.isNotEmpty()) " — ต้องโอนกลับใน MAKE" else "")
+            )
+        )
+    }
+
+    /** Undoes a month close: the leftovers go back to their wallets; the month can be closed again. */
+    suspend fun undoMonthClose(yearMonth: String, reason: String): Double = db.withTransaction {
+        require(reason.isNotBlank()) { "ต้องใส่เหตุผล" }
+        val now = System.currentTimeMillis()
+        val open = BookingRules.outstanding(
+            wallets.getTxnsForSource(TxnSource.MONTH_END.code, BookingRules.monthSourceId(yearMonth)), BookingRules.MONTH_END_KINDS
+        )
+        check(open.isNotEmpty()) { "เดือน $yearMonth ยังไม่ได้ปิด" }
+        val (toVoid, opposite) = BookingRules.reverse(open, today(), now)
+        if (toVoid.isNotEmpty()) wallets.updateTxns(toVoid)
+        if (opposite.isNotEmpty()) wallets.insertTxns(opposite)
+        val moved = open.filter { it.amount > 0 }.sumOf { it.amount }
+        wallets.insertAudit(
+            AuditLogEntity(at = now, action = "UNDO_MONTH_CLOSE", reason = reason.trim(), detail = "ยกเลิกปิดเดือน $yearMonth: คืน ${money(moved)} บาทกลับเข้ากระเป๋าเดิม")
+        )
+        moved
+    }
+
+    /** Manual correction of one wallet (+/−) with a reason, kept in the audit log. */
+    suspend fun adjustWallet(walletId: Long, amount: Double, date: String, reason: String, alreadyInMake: Boolean) = db.withTransaction {
+        val w = requireNotNull(wallets.getWallets().firstOrNull { it.id == walletId }) { "ไม่พบกระเป๋า" }
+        val now = System.currentTimeMillis()
+        wallets.insertTxns(listOf(BookingRules.adjustment(walletId, amount, date, reason, alreadyInMake, now)))
+        wallets.insertAudit(
+            AuditLogEntity(
+                at = now, action = "WALLET_ADJUST", reason = reason.trim(),
+                detail = "ปรับยอด ${w.name} ${if (amount > 0) "+" else ""}${money(amount)} บาท วันที่ $date" +
+                    if (alreadyInMake) " (MAKE ถูกอยู่แล้ว ไม่ต้องโอน)" else ""
+            )
+        )
+    }
+
+    private fun money(v: Double) = String.format(java.util.Locale.US, "%,.2f", v)
 
     suspend fun getBooking(id: Long) = bookings.getBooking(id)
     suspend fun getPayments(bookingId: Long) = bookings.getPayments(bookingId)
