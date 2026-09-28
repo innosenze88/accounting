@@ -26,6 +26,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,12 +52,13 @@ private fun whenText(t: Long): String =
 @Composable
 fun BackupCard(vm: BackupViewModel) {
     val s by vm.state.collectAsStateWithLifecycle()
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if (uri != null) vm.saveTo(uri)
     }
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.pickRestore(uri)
     }
+    var editPassword by remember { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth().testTag("backup_card"), shape = RoundedCornerShape(12.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -72,8 +78,22 @@ fun BackupCard(vm: BackupViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            // Password protection: the backup holds guests' ID / passport numbers (PDPA).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (s.hasPassword) "🔒 ไฟล์สำรองเข้ารหัสด้วยรหัสผ่าน"
+                    else "⚠ ไฟล์สำรองยังไม่มีรหัสผ่าน (มีเลขบัตรประชาชน/พาสปอร์ตแขก)",
+                    fontSize = 12.sp,
+                    color = if (s.hasPassword) Color(0xFF2E7D32) else Color(0xFFE65100),
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { editPassword = true }, enabled = !s.busy) {
+                    Text(if (s.hasPassword) "เปลี่ยน" else "ตั้งรหัส", fontSize = 12.sp)
+                }
+            }
+
             Button(
-                onClick = { saveLauncher.launch(BackupManager.fileName()) },
+                onClick = { saveLauncher.launch(BackupManager.fileName() + if (s.hasPassword) ".enc" else "") },
                 enabled = !s.busy,
                 modifier = Modifier.fillMaxWidth().testTag("backup_save_button")
             ) { Text("สำรองตอนนี้ → บันทึกเป็นไฟล์ (เลือก Google Drive ได้)") }
@@ -141,6 +161,63 @@ fun BackupCard(vm: BackupViewModel) {
             dismissButton = { TextButton(onClick = { vm.cancelRestore() }) { Text("ยกเลิก") } }
         )
     }
+
+    if (editPassword) BackupPasswordDialog(s.hasPassword, onSave = { vm.setBackupPassword(it) { editPassword = false } }) { editPassword = false }
+    s.askPasswordFor?.let { uri ->
+        RestorePasswordDialog(s.passwordWasWrong, onOpen = { vm.pickRestore(uri, it) }, onDismiss = { vm.cancelPassword() })
+    }
+}
+
+@Composable
+private fun BackupPasswordDialog(hasPassword: Boolean, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var pw by remember { mutableStateOf("") }
+    var again by remember { mutableStateOf("") }
+    val tooShort = pw.isNotEmpty() && pw.length < com.example.data.backup.BackupCrypto.MIN_PASSWORD
+    val mismatch = again.isNotEmpty() && again != pw
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("รหัสผ่านไฟล์สำรอง") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "ไฟล์สำรองใหม่ทุกไฟล์ (บันทึก / ส่งต่อ / Google Drive) จะเข้ารหัสด้วยรหัสนี้ " +
+                        "ต้องใช้รหัสเดียวกันตอนกู้คืน — ถ้าลืมรหัส จะเปิดไฟล์ไม่ได้",
+                    fontSize = 12.sp
+                )
+                OutlinedTextField(pw, { pw = it }, label = { Text("รหัสผ่าน (อย่างน้อย 6 ตัว)") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(again, { again = it }, label = { Text("พิมพ์อีกครั้ง") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                if (tooShort) Text("สั้นเกินไป", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                if (mismatch) Text("พิมพ์ไม่ตรงกัน", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                if (hasPassword) TextButton(onClick = { onSave("") }) {
+                    Text("เลิกใช้รหัสผ่าน (ไม่แนะนำ)", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(pw) }, enabled = pw.isNotEmpty() && !tooShort && pw == again) { Text("บันทึก") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ยกเลิก") } }
+    )
+}
+
+@Composable
+private fun RestorePasswordDialog(wrong: Boolean, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
+    var pw by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ไฟล์สำรองนี้มีรหัสผ่าน") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (wrong) Text("รหัสผ่านไม่ถูกต้อง ลองอีกครั้ง", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                OutlinedTextField(pw, { pw = it }, label = { Text("รหัสผ่านไฟล์สำรอง") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = { TextButton(onClick = { onOpen(pw) }, enabled = pw.isNotEmpty()) { Text("เปิดไฟล์") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ยกเลิก") } }
+    )
 }
 
 /** Reminder on the dashboard when there was no backup for a week. */

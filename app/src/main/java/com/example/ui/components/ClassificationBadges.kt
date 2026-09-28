@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +43,7 @@ fun DocumentTypeBadge(
         DocumentType.PAYMENT_VOUCHER -> Triple(Color(0xFFFFEBEE), Color(0xFFC62828), Icons.Default.Payments)
         DocumentType.UTILITY_BILL -> Triple(Color(0xFFE3F2FD), Color(0xFF1565C0), Icons.Default.ElectricBolt)
         DocumentType.ADVANCE_DEPOSIT -> Triple(Color(0xFFF3E5F5), Color(0xFF6A1B9A), Icons.Default.AccountBalance)
+        DocumentType.TRANSFER_SLIP -> Triple(Color(0xFFE0F2F1), Color(0xFF00695C), Icons.Default.SwapHoriz)
         DocumentType.OTHER -> Triple(Color(0xFFECEFF1), Color(0xFF37474F), Icons.Default.Description)
     }
 

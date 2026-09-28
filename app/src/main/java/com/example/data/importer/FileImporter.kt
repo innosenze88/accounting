@@ -221,19 +221,28 @@ object FileImporter {
     /** Reads the first worksheet of an .xlsx file (shared strings, inline strings and numbers). */
     fun parseXlsx(bytes: ByteArray): ParsedTable {
         var sharedStringsXml: ByteArray? = null
-        val sheets = sortedMapOf<String, ByteArray>()
+        // Only the first worksheet is kept in memory; every part is read with a size limit (see SafeUnzip).
+        var firstSheet: ByteArray? = null
+        var sheetNo = Int.MAX_VALUE
+        val budget = SafeUnzip.Budget()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 when {
-                    entry.name == "xl/sharedStrings.xml" -> sharedStringsXml = zip.readBytes()
-                    entry.name.startsWith("xl/worksheets/sheet") && entry.name.endsWith(".xml") ->
-                        sheets[entry.name] = zip.readBytes()
+                    entry.name == "xl/sharedStrings.xml" -> sharedStringsXml = SafeUnzip.readEntry(zip, budget)
+                    entry.name.startsWith("xl/worksheets/sheet") && entry.name.endsWith(".xml") -> {
+                        val no = SafeUnzip.sheetNumber(entry.name)
+                        if (firstSheet == null || no < sheetNo) {
+                            firstSheet = SafeUnzip.readEntry(zip, budget)
+                            sheetNo = no
+                        } else {
+                            SafeUnzip.skipEntry(zip, budget)
+                        }
+                    }
                 }
             }
         }
-        val sheetXml = sheets["xl/worksheets/sheet1.xml"] ?: sheets.values.firstOrNull()
-            ?: throw IllegalArgumentException("ไม่พบแผ่นงานในไฟล์ Excel")
+        val sheetXml = firstSheet ?: throw IllegalArgumentException("ไม่พบแผ่นงานในไฟล์ Excel")
         val shared = sharedStringsXml?.let { readSharedStrings(it) } ?: emptyList()
 
         val records = mutableListOf<List<String>>()

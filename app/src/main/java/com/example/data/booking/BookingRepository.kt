@@ -20,6 +20,7 @@ class BookingRepository(private val db: AppDatabase) {
     val txnsFlow: Flow<List<WalletTxnEntity>> = wallets.observeTxns()
     val dayClosesFlow: Flow<List<DayCloseEntity>> = wallets.observeDayCloses()
     val percentChangesFlow: Flow<List<WalletPercentChangeEntity>> = wallets.observePercentChanges()
+    val auditFlow: Flow<List<AuditLogEntity>> = wallets.observeAudit()
 
     /** Creates the advance wallet + 8 wallets the first time (names and % can be changed later). */
     suspend fun ensureDefaultWallets() {
@@ -210,8 +211,10 @@ class BookingRepository(private val db: AppDatabase) {
 
     /** Month end: leftovers of every budget wallet move to savings. Only once per month. */
     suspend fun closeMonth(yearMonth: String, date: String): Double = db.withTransaction {
-        val sourceId = yearMonth.replace("-", "").toLong()
-        check(wallets.getTxnsForSource(TxnSource.MONTH_END.code, sourceId).none { it.isActive }) { "ปิดเดือน $yearMonth ไปแล้ว" }
+        val sourceId = BookingRules.monthSourceId(yearMonth)
+        check(BookingRules.outstanding(wallets.getTxnsForSource(TxnSource.MONTH_END.code, sourceId), BookingRules.MONTH_END_KINDS).isEmpty()) {
+            "ปิดเดือน $yearMonth ไปแล้ว"
+        }
         val txns = BookingRules.monthEnd(setup(), BookingRules.balances(wallets.getAllTxns()), yearMonth, date)
         wallets.insertTxns(txns)
         txns.filter { it.amount > 0 }.sumOf { it.amount }
@@ -241,6 +244,66 @@ class BookingRepository(private val db: AppDatabase) {
             )
         )
     }
+
+    /**
+     * Undoes a day close (e.g. the eZee amount was typed wrong): the eZee split of that day is reversed
+     * (voided if not moved in MAKE yet, otherwise an opposite movement to transfer back), the close is removed
+     * so the day can be closed again, and the undo is kept in the audit log.
+     */
+    suspend fun undoDayClose(date: String, reason: String) = db.withTransaction {
+        require(reason.isNotBlank()) { "ต้องใส่เหตุผล" }
+        val close = requireNotNull(wallets.getDayClose(date)) { "วันที่ $date ยังไม่ได้ปิดยอด" }
+        val now = System.currentTimeMillis()
+        val open = BookingRules.outstanding(
+            wallets.getTxnsForSource(TxnSource.EZEE.code, BookingRules.daySourceId(date)), setOf(WalletTxnKind.ALLOCATION)
+        )
+        val (toVoid, opposite) = BookingRules.reverse(open, today(), now)
+        if (toVoid.isNotEmpty()) wallets.updateTxns(toVoid)
+        if (opposite.isNotEmpty()) wallets.insertTxns(opposite)
+        wallets.deleteDayClose(date)
+        wallets.insertAudit(
+            AuditLogEntity(
+                at = now, action = "UNDO_DAY_CLOSE", reason = reason.trim(),
+                detail = "ยกเลิกปิดยอด $date: รายได้ eZee ${money(close.ezeeIncome)} บาท" +
+                    (close.cashCounted?.let { ", นับเงินสดได้ ${money(it)}" } ?: "") +
+                    (if (opposite.isNotEmpty()) " — ต้องโอนกลับใน MAKE" else "")
+            )
+        )
+    }
+
+    /** Undoes a month close: the leftovers go back to their wallets; the month can be closed again. */
+    suspend fun undoMonthClose(yearMonth: String, reason: String): Double = db.withTransaction {
+        require(reason.isNotBlank()) { "ต้องใส่เหตุผล" }
+        val now = System.currentTimeMillis()
+        val open = BookingRules.outstanding(
+            wallets.getTxnsForSource(TxnSource.MONTH_END.code, BookingRules.monthSourceId(yearMonth)), BookingRules.MONTH_END_KINDS
+        )
+        check(open.isNotEmpty()) { "เดือน $yearMonth ยังไม่ได้ปิด" }
+        val (toVoid, opposite) = BookingRules.reverse(open, today(), now)
+        if (toVoid.isNotEmpty()) wallets.updateTxns(toVoid)
+        if (opposite.isNotEmpty()) wallets.insertTxns(opposite)
+        val moved = open.filter { it.amount > 0 }.sumOf { it.amount }
+        wallets.insertAudit(
+            AuditLogEntity(at = now, action = "UNDO_MONTH_CLOSE", reason = reason.trim(), detail = "ยกเลิกปิดเดือน $yearMonth: คืน ${money(moved)} บาทกลับเข้ากระเป๋าเดิม")
+        )
+        moved
+    }
+
+    /** Manual correction of one wallet (+/−) with a reason, kept in the audit log. */
+    suspend fun adjustWallet(walletId: Long, amount: Double, date: String, reason: String, alreadyInMake: Boolean) = db.withTransaction {
+        val w = requireNotNull(wallets.getWallets().firstOrNull { it.id == walletId }) { "ไม่พบกระเป๋า" }
+        val now = System.currentTimeMillis()
+        wallets.insertTxns(listOf(BookingRules.adjustment(walletId, amount, date, reason, alreadyInMake, now)))
+        wallets.insertAudit(
+            AuditLogEntity(
+                at = now, action = "WALLET_ADJUST", reason = reason.trim(),
+                detail = "ปรับยอด ${w.name} ${if (amount > 0) "+" else ""}${money(amount)} บาท วันที่ $date" +
+                    if (alreadyInMake) " (MAKE ถูกอยู่แล้ว ไม่ต้องโอน)" else ""
+            )
+        )
+    }
+
+    private fun money(v: Double) = String.format(java.util.Locale.US, "%,.2f", v)
 
     suspend fun getBooking(id: Long) = bookings.getBooking(id)
     suspend fun getPayments(bookingId: Long) = bookings.getPayments(bookingId)

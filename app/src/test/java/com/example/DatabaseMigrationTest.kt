@@ -47,7 +47,7 @@ class DatabaseMigrationTest {
     """.trimIndent()
 
     @Test
-    fun `migration 1 to 6 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
+    fun `migration 1 to 7 keeps existing rows and marks them PENDING`() = runBlocking<Unit> {
         val name = "migration_test.db"
         context.deleteDatabase(name)
 
@@ -108,6 +108,9 @@ class DatabaseMigrationTest {
         )
         assertEquals("RC2609-0001", roomDb.issuedDocDao().get(docId)?.number)
 
+        // v7: slip reference column, audit log
+        assertNull(row.referenceNo)
+        roomDb.walletDao().insertAudit(com.example.data.booking.AuditLogEntity(action = "TEST", detail = "d", reason = "r"))
         // v6 table (history of wallet % changes) exists and works
         roomDb.walletDao().insertPercentChange(
             com.example.data.booking.WalletPercentChangeEntity(
@@ -154,6 +157,11 @@ class DatabaseMigrationTest {
         // Voided / rejected documents are not duplicates any more.
         assertFalse(doc.looksLikeDuplicateOf(other.copy(status = DocumentStatus.VOIDED.code)))
         assertFalse(doc.looksLikeDuplicateOf(other.copy(status = DocumentStatus.REJECTED.code)))
+        // Transfer slips: the bank reference decides.
+        val slip = doc.copy(documentNo = null, referenceNo = "Ref 2026092512345678")
+        assertTrue(slip.looksLikeDuplicateOf(other.copy(documentNo = null, totalAmount = 1.0, referenceNo = "2026-0925-1234-5678")))
+        // Same amount, same day, same receiver but a different reference = two different payments.
+        assertFalse(slip.looksLikeDuplicateOf(other.copy(documentNo = null, referenceNo = "2026092599999999")))
     }
 
     @Test

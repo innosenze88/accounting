@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -862,6 +863,7 @@ private fun TypeBreakdownRow(
         DocumentType.PAYMENT_VOUCHER -> Icons.Default.Payments to Color(0xFFC62828)
         DocumentType.UTILITY_BILL -> Icons.Default.ElectricBolt to Color(0xFF1565C0)
         DocumentType.ADVANCE_DEPOSIT -> Icons.Default.AccountBalance to Color(0xFF6A1B9A)
+        DocumentType.TRANSFER_SLIP -> Icons.Default.SwapHoriz to Color(0xFF00695C)
         DocumentType.OTHER -> Icons.Default.Description to Color(0xFF455A64)
     }
 

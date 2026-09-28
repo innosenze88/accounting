@@ -42,7 +42,7 @@ class BackupManager(private val context: Context) {
         const val FORMAT = "resort-accounting-backup"
         const val DB_NAME = "accounting_ocr.db"
         /** Database version this app writes (must match AppDatabase). */
-        const val DB_VERSION = 6
+        const val DB_VERSION = 7
         private const val MANIFEST = "manifest.json"
         private const val DB_ENTRY = "database/$DB_NAME"
         private const val FILES_PREFIX = "files/"
@@ -58,8 +58,27 @@ class BackupManager(private val context: Context) {
     /** Safety copies made right before a restore. Outside filesDir, so a restore never touches them. */
     private val safetyDir get() = File(app.noBackupFilesDir, "safety_backups").apply { mkdirs() }
 
-    /** Creates a backup zip in the cache folder and returns it (share it, save it or upload it). */
-    suspend fun createBackup(): File = withContext(Dispatchers.IO) {
+    /** The picked backup is password protected and no (or a wrong) password was given. */
+    class PasswordNeededException(val wrongPassword: Boolean) :
+        IllegalStateException(if (wrongPassword) "รหัสผ่านไฟล์สำรองไม่ถูกต้อง" else "ไฟล์สำรองนี้มีรหัสผ่าน")
+
+    /**
+     * Creates a backup and returns it (share it, save it or upload it). With a [password] the zip is encrypted
+     * ([BackupCrypto], file ends with .enc) because it contains guests' ID / passport numbers.
+     */
+    suspend fun createBackup(password: String? = null): File = withContext(Dispatchers.IO) {
+        val zip = createZip()
+        if (password.isNullOrEmpty()) return@withContext zip
+        val enc = File(backupDir, zip.name + ".enc")
+        try {
+            BackupCrypto.encrypt(zip, enc, password)
+        } finally {
+            zip.delete()
+        }
+        enc
+    }
+
+    private suspend fun createZip(): File {
         val db = AppDatabase.getInstance(app)
         // Write everything from the WAL journal into the main file, so copying one file is enough.
         db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").use { it.moveToFirst() }
@@ -101,14 +120,32 @@ class BackupManager(private val context: Context) {
             zip.write(manifest.toString(2).toByteArray())
             zip.closeEntry()
         }
-        out
+        return out
     }
 
-    /** Copies a picked file into the cache and reads its manifest. Throws with a Thai message if it is not a backup. */
-    suspend fun inspect(uri: Uri): Pair<File, BackupInfo> = withContext(Dispatchers.IO) {
+    /**
+     * Copies a picked file into the cache (decrypting it with [password] when it is protected) and reads its
+     * manifest. Throws [PasswordNeededException] for a protected file without / with a wrong password.
+     */
+    suspend fun inspect(uri: Uri, password: String? = null): Pair<File, BackupInfo> = withContext(Dispatchers.IO) {
+        val raw = File(backupDir, "restore-candidate.bin")
         val copy = File(backupDir, "restore-candidate.zip")
-        app.contentResolver.openInputStream(uri)?.use { input -> copy.outputStream().use { input.copyTo(it) } }
+        app.contentResolver.openInputStream(uri)?.use { input -> raw.outputStream().use { input.copyTo(it) } }
             ?: error("เปิดไฟล์ไม่ได้")
+        try {
+            if (BackupCrypto.isEncrypted(raw)) {
+                if (password.isNullOrEmpty()) throw PasswordNeededException(wrongPassword = false)
+                try {
+                    BackupCrypto.decrypt(raw, copy, password)
+                } catch (e: BackupCrypto.WrongPasswordException) {
+                    throw PasswordNeededException(wrongPassword = true)
+                }
+            } else {
+                raw.copyTo(copy, overwrite = true)
+            }
+        } finally {
+            raw.delete()
+        }
         copy to readInfo(copy)
     }
 

@@ -80,6 +80,15 @@ interface WalletDao {
     @Insert
     suspend fun insertPercentChange(c: WalletPercentChangeEntity): Long
 
+    @Query("DELETE FROM day_closes WHERE date = :date")
+    suspend fun deleteDayClose(date: String)
+
+    @Insert
+    suspend fun insertAudit(a: AuditLogEntity): Long
+
+    @Query("SELECT * FROM audit_log ORDER BY at DESC, id DESC")
+    fun observeAudit(): Flow<List<AuditLogEntity>>
+
     @Query("SELECT * FROM day_closes ORDER BY date DESC")
     fun observeDayCloses(): Flow<List<DayCloseEntity>>
 

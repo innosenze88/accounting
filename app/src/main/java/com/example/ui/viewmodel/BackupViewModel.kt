@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.backup.BackupCrypto
 import com.example.data.backup.BackupInfo
 import com.example.data.backup.BackupManager
 import com.example.data.backup.BackupPrefs
@@ -37,7 +38,12 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         val autoDrive: Boolean = true,
         val sheetsReady: Boolean = false,
         /** A picked backup waiting for "confirm restore". */
-        val pendingRestore: Pair<File, BackupInfo>? = null
+        val pendingRestore: Pair<File, BackupInfo>? = null,
+        /** Backups are encrypted with a password (they contain guests' ID numbers). */
+        val hasPassword: Boolean = false,
+        /** A picked protected backup that needs its password typed. */
+        val askPasswordFor: Uri? = null,
+        val passwordWasWrong: Boolean = false
     )
 
     private val _state = MutableStateFlow(State())
@@ -55,6 +61,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             lastDriveBackupAt = prefs.lastDriveBackupAt,
             lastDriveError = prefs.lastDriveError,
             autoDrive = prefs.autoDriveBackup,
+            hasPassword = aiSettings.backupPassword.isNotEmpty(),
             sheetsReady = aiSettings.settings.value.sheetsEnabled
         )
     }
@@ -76,9 +83,20 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun password(): String? = aiSettings.backupPassword.ifEmpty { null }
+
+    /** Sets (or with "" removes) the password that protects every new backup file. */
+    fun setBackupPassword(pw: String, onDone: () -> Unit = {}) = run {
+        if (pw.isNotEmpty()) BackupCrypto.passwordProblem(pw)?.let { error(it) }
+        aiSettings.backupPassword = pw
+        onDone()
+        if (pw.isEmpty()) "ยกเลิกรหัสผ่านแล้ว — ไฟล์สำรองใหม่จะไม่ถูกเข้ารหัส"
+        else "✓ ตั้งรหัสผ่านไฟล์สำรองแล้ว — จดรหัสไว้ให้ดี ถ้าลืมจะกู้คืนไฟล์ไม่ได้"
+    }
+
     /** "บันทึกเป็นไฟล์": writes the backup to a place the person picked (phone, Google Drive, ...). */
     fun saveTo(uri: Uri) = run {
-        val file = manager.createBackup()
+        val file = manager.createBackup(password())
         withContext(Dispatchers.IO) {
             getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
                 file.inputStream().use { it.copyTo(out) }
@@ -91,10 +109,10 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     /** "ส่งไฟล์สำรอง": opens the share sheet (LINE Keep, e-mail, Drive...). */
     fun share() = run {
         val app = getApplication<Application>()
-        val file = manager.createBackup()
+        val file = manager.createBackup(password())
         val uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
         val send = Intent(Intent.ACTION_SEND)
-            .setType("application/zip")
+            .setType(if (file.name.endsWith(".enc")) "application/octet-stream" else "application/zip")
             .putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         app.startActivity(Intent.createChooser(send, "ส่งไฟล์สำรองไปที่...").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -107,7 +125,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun uploadToDrive(): String {
         val s = aiSettings.settings.value
         check(s.sheetsEnabled) { "ต้องตั้งค่า Google Sheets (Apps Script) ก่อน — ดูหัวข้อ Google Sheets ด้านล่าง" }
-        val file = manager.createBackup()
+        val file = manager.createBackup(password())
         val result = sheets.saveBackup(s.sheetsWebAppUrl, s.sheetsToken, file)
         val error = result.exceptionOrNull()?.let { e ->
             val m = e.localizedMessage ?: "ไม่สำเร็จ"
@@ -139,10 +157,20 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Step 1 of a restore: read the picked file and show what is inside. */
-    fun pickRestore(uri: Uri) = run {
-        val picked = manager.inspect(uri)
-        _state.value = _state.value.copy(pendingRestore = picked)
-        ""
+    fun pickRestore(uri: Uri, typedPassword: String? = null) = run {
+        try {
+            // Try the saved password first; ask only when it does not open the file.
+            val picked = manager.inspect(uri, typedPassword ?: password())
+            _state.value = _state.value.copy(pendingRestore = picked, askPasswordFor = null, passwordWasWrong = false)
+            ""
+        } catch (e: BackupManager.PasswordNeededException) {
+            _state.value = _state.value.copy(askPasswordFor = uri, passwordWasWrong = typedPassword != null)
+            ""
+        }
+    }
+
+    fun cancelPassword() {
+        _state.value = _state.value.copy(askPasswordFor = null, passwordWasWrong = false)
     }
 
     fun cancelRestore() {

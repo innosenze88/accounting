@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.booking.AuditLogEntity
 import com.example.data.booking.BookingEntity
 import com.example.data.booking.BookingMoney
 import com.example.data.booking.BookingPaymentEntity
@@ -95,6 +96,10 @@ class BookingViewModel(application: Application) : AndroidViewModel(application)
 
     val txns: StateFlow<List<WalletTxnEntity>> =
         repo.txnsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Corrections (undo day/month close, wallet adjustments), newest first. */
+    val audit: StateFlow<List<AuditLogEntity>> =
+        repo.auditFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** History of % changes, newest first. */
     val percentChanges: StateFlow<List<WalletPercentChangeEntity>> =
@@ -252,7 +257,25 @@ class BookingViewModel(application: Application) : AndroidViewModel(application)
         else "ปิดเดือนแล้ว — ไม่มีเงินเหลือในกระเป๋าให้ย้าย"
     }
 
+    fun undoMonthClose(yearMonth: String, reason: String) = act {
+        val back = repo.undoMonthClose(yearMonth, reason)
+        "✓ ยกเลิกปิดเดือน ${ThaiDate.month(yearMonth)} แล้ว — คืน ${money(back)} บาทกลับเข้ากระเป๋าเดิม (ดูยอดที่ต้องโอนกลับในรายการโอน)"
+    }
+
+    fun adjustWallet(walletId: Long, amount: Double, date: String, reason: String, alreadyInMake: Boolean, onSaved: () -> Unit = {}) = act {
+        repo.adjustWallet(walletId, amount, date, reason, alreadyInMake)
+        onSaved()
+        "✓ ปรับยอดกระเป๋าแล้ว ${if (amount > 0) "+" else ""}${money(amount)} บาท" +
+            if (alreadyInMake) "" else " (ดูยอดที่ต้องโอนใน MAKE)"
+    }
+
     // ------------------------------------------------------------------ day close
+
+    fun undoDayClose(date: String, reason: String, onDone: () -> Unit = {}) = act {
+        repo.undoDayClose(date, reason)
+        onDone()
+        "✓ ยกเลิกปิดยอด ${ThaiDate.long(date)} แล้ว — แก้ตัวเลขแล้วปิดยอดใหม่ได้ (ถ้าโอนใน MAKE ไปแล้ว ดูรายการโอนกลับในแท็บกระเป๋า)"
+    }
 
     /** Money received today from eZee (Manager Report "Total Payment"), if that report was imported. */
     suspend fun suggestedEzeeIncome(date: String): Double? = db.importedFileDao().observeAll().first()

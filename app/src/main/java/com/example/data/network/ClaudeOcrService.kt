@@ -32,10 +32,11 @@ class ClaudeOcrService(
     override suspend fun extract(
         input: DocumentInput,
         apiKey: String,
-        model: String
+        model: String,
+        businessContext: String
     ): Result<Pair<AccountingDocumentJson, String>> = withContext(Dispatchers.IO) {
         runCatching {
-            val text = send(apiKey, buildBody(model, OcrCommon.SYSTEM_INSTRUCTION, OcrCommon.USER_PROMPT, input))
+            val text = send(apiKey, buildBody(model, OcrCommon.documentInstruction(businessContext), OcrCommon.USER_PROMPT, input))
             if (text.isBlank()) throw IllegalStateException("Claude ไม่มีข้อความในผลลัพธ์")
             val clean = OcrCommon.sanitizeJson(text)
             OcrCommon.parseDocument(clean) to clean
@@ -100,33 +101,57 @@ class ClaudeOcrService(
         }
     }
 
+    /**
+     * How the key is sent. The documented way is the "x-api-key" header; some key types (OAuth-style tokens)
+     * need "Authorization: Bearer". The one that worked is remembered for the next requests.
+     */
+    @Volatile
+    private var remembered: Pair<Int, Boolean>? = null // (key hash, bearer) — only for the same key
+
     /** Sends a Messages API request and returns the joined text blocks (thinking blocks are skipped). */
     private fun send(apiKey: String, body: JSONObject): String {
         val cleanKey = apiKey.filterNot { it.isWhitespace() }
+        val known = remembered?.takeIf { it.first == cleanKey.hashCode() }?.second
+        val first = known ?: ClaudeAuth.preferBearer(cleanKey)
+        val (code, text) = call(cleanKey, body, first)
+        if (code == 401 && known == null) {
+            // Wrong header style for this kind of key: try the other one once.
+            val (code2, text2) = call(cleanKey, body, !first)
+            if (code2 in 200..299) {
+                remembered = cleanKey.hashCode() to !first
+                return textOf(text2)
+            }
+            throw IllegalStateException(OcrCommon.describeHttpError("Claude", code, text))
+        }
+        if (code !in 200..299) throw IllegalStateException(OcrCommon.describeHttpError("Claude", code, text))
+        remembered = cleanKey.hashCode() to first
+        return textOf(text)
+    }
+
+    private fun call(key: String, body: JSONObject, bearer: Boolean): Pair<Int, String?> {
         val builder = Request.Builder()
             .url(URL)
-            .header("Authorization", "Bearer $cleanKey")
             .header("anthropic-version", API_VERSION)
+        if (bearer) builder.header("Authorization", "Bearer $key") else builder.header("x-api-key", key)
         workspaceId().trim().takeIf { it.isNotEmpty() }?.let {
             builder.header("anthropic-workspace-id", it)
         }
         val request = builder
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
-
         OcrCommon.httpClient.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string()
-            if (!response.isSuccessful) {
-                throw IllegalStateException(OcrCommon.describeHttpError("Claude", response.code, responseBody))
-            }
-            val root = JSONObject(responseBody ?: throw IllegalStateException("Claude ตอบกลับว่างเปล่า"))
-            val blocks = root.optJSONArray("content") ?: return ""
-            val sb = StringBuilder()
-            for (i in 0 until blocks.length()) {
-                val block = blocks.optJSONObject(i) ?: continue
-                if (block.optString("type") == "text") sb.append(block.optString("text", ""))
-            }
-            return sb.toString()
+            return response.code to response.body?.string()
         }
+    }
+
+    private fun textOf(responseBody: String?): String {
+        val root = JSONObject(responseBody ?: throw IllegalStateException("Claude ตอบกลับว่างเปล่า"))
+        val blocks = root.optJSONArray("content") ?: return ""
+        val sb = StringBuilder()
+        for (i in 0 until blocks.length()) {
+            val block = blocks.optJSONObject(i) ?: continue
+            if (block.optString("type") == "text") sb.append(block.optString("text", ""))
+        }
+        return sb.toString()
     }
 }

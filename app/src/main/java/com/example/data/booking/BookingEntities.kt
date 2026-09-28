@@ -181,3 +181,18 @@ data class WalletPercentChangeEntity(
     val beforePercents: String,
     val afterPercents: String
 )
+
+/**
+ * Record of corrections that change money already booked: undoing a day close or a month close,
+ * manual wallet adjustments. Never deleted.
+ */
+@Entity(tableName = "audit_log")
+data class AuditLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val at: Long = System.currentTimeMillis(),
+    /** e.g. UNDO_DAY_CLOSE, UNDO_MONTH_CLOSE, WALLET_ADJUST */
+    val action: String,
+    /** What was changed, in Thai (amounts, dates, wallet). */
+    val detail: String,
+    val reason: String
+)

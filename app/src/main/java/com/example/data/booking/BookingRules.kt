@@ -225,6 +225,48 @@ object BookingRules {
         return toVoid to opposite
     }
 
+    /**
+     * Movements of [kinds] that still count: active and not yet cancelled by an opposite ADJUST
+     * (an ADJUST of the same wallet with the opposite amount, made by [reverse] after the money was moved in MAKE).
+     * Used so a day close / month close can be undone, closed again and undone again without undoing anything twice.
+     */
+    fun outstanding(txns: List<WalletTxnEntity>, kinds: Set<WalletTxnKind>): List<WalletTxnEntity> {
+        val active = txns.filter { it.isActive }
+        val offsets = active.filter { it.txnKind == WalletTxnKind.ADJUST }
+            .groupBy { it.walletId to WalletMath.toSatang(-it.amount) }
+            .mapValues { it.value.size }.toMutableMap()
+        return active.filter { it.txnKind in kinds }.sortedBy { it.id }.filter { t ->
+            val key = t.walletId to WalletMath.toSatang(t.amount)
+            val left = offsets[key] ?: 0
+            if (left > 0) {
+                offsets[key] = left - 1
+                false
+            } else true
+        }
+    }
+
+    /** sourceId of a day close ("2026-09-25" -> 20260925). */
+    fun daySourceId(date: String): Long = date.replace("-", "").toLong()
+
+    /** sourceId of a month close ("2026-09" -> 202609). */
+    fun monthSourceId(yearMonth: String): Long = yearMonth.replace("-", "").toLong()
+
+    val MONTH_END_KINDS = setOf(WalletTxnKind.MONTH_END_OUT, WalletTxnKind.MONTH_END_IN)
+
+    /**
+     * A manual correction of one wallet (+ or −) with a reason. [alreadyInMake] = true when the pocket in MAKE
+     * is already right and only the app was wrong (nothing to transfer).
+     */
+    fun adjustment(walletId: Long, amount: Double, date: String, reason: String, alreadyInMake: Boolean, now: Long): WalletTxnEntity {
+        require(WalletMath.toSatang(amount) != 0L) { "ยอดปรับต้องไม่เป็น 0" }
+        require(reason.isNotBlank()) { "ต้องใส่เหตุผล" }
+        return WalletTxnEntity(
+            walletId = walletId, amount = WalletMath.toBaht(WalletMath.toSatang(amount)), kind = WalletTxnKind.ADJUST.code,
+            date = date, sourceType = TxnSource.MANUAL.code, note = "ปรับยอด: ${reason.trim()}",
+            transferredAt = if (alreadyInMake) now else null
+        )
+    }
+
     /** Month end: every budget wallet with money left moves it to the savings wallet. */
     fun monthEnd(setup: WalletSetup, balances: Map<Long, Double>, yearMonth: String, date: String): List<WalletTxnEntity> {
         val savings = requireNotNull(setup.savings) { "ยังไม่มีกระเป๋าเงินเก็บ" }

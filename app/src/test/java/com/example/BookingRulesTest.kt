@@ -118,6 +118,46 @@ class BookingRulesTest {
     }
 
     @Test
+    fun dayCloseCanBeUndoneAndClosedAgainWithoutDoubleReversal() {
+        val src = com.example.data.booking.TxnSource.EZEE
+        val day = BookingRules.daySourceId("2026-09-25")
+        // 1) Closed with a typo (21,000 instead of 12,000); already moved in MAKE.
+        var id = 0L
+        fun ids(l: List<com.example.data.booking.WalletTxnEntity>) = l.map { it.copy(id = ++id) }
+        val wrong = ids(BookingRules.split(setup, 21000.0, "2026-09-25", src, day, "eZee")).map { it.copy(transferredAt = 1L) }
+        val kinds = setOf(WalletTxnKind.ALLOCATION)
+        assertEquals(wrong.size, BookingRules.outstanding(wrong, kinds).size)
+        // 2) Undo -> opposite movements (money has to go back in MAKE).
+        val (v1, back1) = BookingRules.reverse(BookingRules.outstanding(wrong, kinds), "2026-09-26", 2L)
+        assertTrue(v1.isEmpty())
+        val afterUndo = wrong + ids(back1)
+        assertTrue(BookingRules.outstanding(afterUndo, kinds).isEmpty())
+        assertEquals(0.0, BookingRules.balances(afterUndo).values.sum(), 1e-9)
+        // 3) Closed again with the right amount, then undone again (not moved in MAKE yet): only the new split is undone.
+        val right = ids(BookingRules.split(setup, 12000.0, "2026-09-25", src, day, "eZee"))
+        val all = afterUndo + right
+        assertEquals(12000.0, BookingRules.balances(all).values.sum(), 1e-9)
+        val open = BookingRules.outstanding(all, kinds)
+        assertEquals(right.map { it.id }, open.map { it.id })
+        val (v2, back2) = BookingRules.reverse(open, "2026-09-26", 3L)
+        assertTrue(back2.isEmpty())
+        val final = all.map { t -> v2.firstOrNull { it.id == t.id } ?: t }
+        assertEquals(0.0, BookingRules.balances(final).values.sum(), 1e-9)
+    }
+
+    @Test
+    fun manualAdjustmentNeedsReason() {
+        assertNotNull(runCatching { BookingRules.adjustment(2L, 100.0, "2026-09-25", " ", true, 1L) }.exceptionOrNull())
+        assertNotNull(runCatching { BookingRules.adjustment(2L, 0.0, "2026-09-25", "x", true, 1L) }.exceptionOrNull())
+        val t = BookingRules.adjustment(2L, -150.0, "2026-09-25", "นับเงินผิด", alreadyInMake = true, now = 5L)
+        assertEquals(-150.0, t.amount, 0.0)
+        assertEquals(5L, t.transferredAt)
+        // Already right in MAKE -> nothing to transfer.
+        assertTrue(BookingRules.pendingTransfers(listOf(t)).isEmpty())
+        assertEquals(mapOf(2L to -150.0), BookingRules.pendingTransfers(listOf(BookingRules.adjustment(2L, -150.0, "2026-09-25", "x", false, 5L))))
+    }
+
+    @Test
     fun cannotSettleTwice() {
         val settled = booking.copy(settledAt = 1L, status = BookingStatus.CHECKED_OUT.code)
         val e = runCatching { BookingRules.checkOut(setup, settled, emptyList(), "2026-10-02") }.exceptionOrNull()

@@ -55,6 +55,8 @@ internal fun WalletsTab(vm: BookingViewModel) {
     var settings by remember { mutableStateOf(false) }
     var expense by remember { mutableStateOf(false) }
     var monthEnd by remember { mutableStateOf(false) }
+    var adjust by remember { mutableStateOf(false) }
+    val audit by vm.audit.collectAsStateWithLifecycle()
     var undoTxnId by remember { mutableStateOf<Long?>(null) }
 
     val advance = wallets.firstOrNull { it.wallet.walletRole == WalletRole.ADVANCE }
@@ -117,6 +119,18 @@ internal fun WalletsTab(vm: BookingViewModel) {
         item {
             OutlinedButton(onClick = { monthEnd = true }, modifier = Modifier.fillMaxWidth()) { Text("ปิดเดือน → ย้ายเงินเหลือเข้าเงินเก็บ") }
         }
+        item {
+            TextButton(onClick = { adjust = true }, modifier = Modifier.fillMaxWidth()) { Text("ปรับยอดกระเป๋า (แก้ตัวเลขที่ผิด)") }
+        }
+        if (audit.isNotEmpty()) {
+            item { SectionTitle("บันทึกการแก้ไข") }
+            items(audit.take(10), key = { "a${it.id}" }) { a ->
+                Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text("${ThaiDate.short(ReportPeriod.isoDay(a.at))} • ${a.detail}", fontSize = 12.sp)
+                    Text("เหตุผล: ${a.reason}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
 
         item { SectionTitle("ความเคลื่อนไหวล่าสุด") }
         val recent = txns.sortedByDescending { it.createdAt }.take(40)
@@ -147,6 +161,7 @@ internal fun WalletsTab(vm: BookingViewModel) {
     if (settings) WalletSettingsDialog(allWallets, vm) { settings = false }
     if (expense) ExpenseDialog(budget, vm) { expense = false }
     if (monthEnd) MonthEndDialog(vm) { monthEnd = false }
+    if (adjust) AdjustDialog(budget, vm) { adjust = false }
     undoTxnId?.let { id ->
         AlertDialog(
             onDismissRequest = { undoTxnId = null },
@@ -394,11 +409,57 @@ private fun ExpenseDialog(wallets: List<WalletView>, vm: BookingViewModel, onDis
     )
 }
 
+// ---------------------------------------------------------------------------------- adjust
+
+@Composable
+private fun AdjustDialog(wallets: List<WalletView>, vm: BookingViewModel, onDismiss: () -> Unit) {
+    var wallet by remember { mutableStateOf(wallets.firstOrNull()) }
+    var amount by remember { mutableStateOf("") }
+    var minus by remember { mutableStateOf(false) }
+    var date by remember { mutableStateOf(ReportPeriod.today()) }
+    var reason by remember { mutableStateOf("") }
+    var alreadyInMake by remember { mutableStateOf(true) }
+    val value = parseMoney(amount) ?: 0.0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ปรับยอดกระเป๋า") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ใช้แก้ตัวเลขในแอปที่ไม่ตรงกับความจริง ทุกการปรับจะถูกบันทึกพร้อมเหตุผล", fontSize = 12.sp)
+                ChoiceChips(wallets, wallet, { "${it.wallet.name} (${baht(it.balance)})" }) { wallet = it }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (minus) "ลดยอด (−)" else "เพิ่มยอด (+)", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = minus, onCheckedChange = { minus = it })
+                }
+                MoneyField("จำนวนเงิน", amount, { amount = it })
+                DateField("วันที่", date, { date = it }, Modifier.fillMaxWidth())
+                TextInput("เหตุผล (จำเป็น)", reason, { reason = it })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("ในแอป MAKE ถูกอยู่แล้ว (ไม่ต้องโอน)", fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = alreadyInMake, onCheckedChange = { alreadyInMake = it })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = wallet != null && value > 0 && reason.isNotBlank(),
+                onClick = {
+                    wallet?.let { vm.adjustWallet(it.wallet.id, if (minus) -value else value, date, reason.trim(), alreadyInMake, onSaved = onDismiss) }
+                }
+            ) { Text("บันทึก") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ยกเลิก") } }
+    )
+}
+
 // ---------------------------------------------------------------------------------- month end
 
 @Composable
 private fun MonthEndDialog(vm: BookingViewModel, onDismiss: () -> Unit) {
     var ym by remember { mutableStateOf(previousMonth(ReportPeriod.today().take(7))) }
+    var undoMode by remember { mutableStateOf(false) }
+    var reason by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("ปิดเดือน") },
@@ -409,11 +470,22 @@ private fun MonthEndDialog(vm: BookingViewModel, onDismiss: () -> Unit) {
                     Text(ThaiDate.month(ym), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton(onClick = { ym = com.example.data.wallet.WalletMath.nextMonth(ym) }) { Text("▶") }
                 }
-                Text("เงินที่เหลือในทุกกระเป๋าค่าใช้จ่ายจะย้ายเข้ากระเป๋าเงินเก็บ แล้วแอปจะบอกยอดที่ต้องโอนใน MAKE", fontSize = 13.sp)
-                Text("ทำหลังจ่ายค่าใช้จ่ายของเดือนนั้นครบแล้ว", fontSize = 12.sp, color = Orange)
+                if (!undoMode) {
+                    Text("เงินที่เหลือในทุกกระเป๋าค่าใช้จ่ายจะย้ายเข้ากระเป๋าเงินเก็บ แล้วแอปจะบอกยอดที่ต้องโอนใน MAKE", fontSize = 13.sp)
+                    Text("ทำหลังจ่ายค่าใช้จ่ายของเดือนนั้นครบแล้ว", fontSize = 12.sp, color = Orange)
+                    TextButton(onClick = { undoMode = true }) { Text("ปิดเดือนนี้ไปแล้วแต่ผิด? ยกเลิกการปิดเดือน", fontSize = 12.sp) }
+                } else {
+                    Text("เงินที่ย้ายเข้าเงินเก็บตอนปิดเดือนนี้จะกลับไปอยู่กระเป๋าเดิม แล้วปิดเดือนใหม่ได้", fontSize = 13.sp)
+                    TextInput("เหตุผล (จำเป็น)", reason, { reason = it })
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { vm.closeMonth(ym); onDismiss() }) { Text("ปิดเดือน") } },
+        confirmButton = {
+            if (!undoMode) TextButton(onClick = { vm.closeMonth(ym); onDismiss() }) { Text("ปิดเดือน") }
+            else TextButton(enabled = reason.isNotBlank(), onClick = { vm.undoMonthClose(ym, reason); onDismiss() }) {
+                Text("ยกเลิกการปิดเดือน", color = MaterialTheme.colorScheme.error)
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("ยกเลิก") } }
     )
 }

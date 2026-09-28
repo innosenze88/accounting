@@ -21,10 +21,11 @@ class GeminiOcrService : OcrService {
     override suspend fun extract(
         input: DocumentInput,
         apiKey: String,
-        model: String
+        model: String,
+        businessContext: String
     ): Result<Pair<AccountingDocumentJson, String>> = withContext(Dispatchers.IO) {
         runCatching {
-            val text = generate(apiKey, model, buildBody(OcrCommon.SYSTEM_INSTRUCTION, OcrCommon.USER_PROMPT, input))
+            val text = generate(apiKey, model, buildBody(OcrCommon.documentInstruction(businessContext), OcrCommon.USER_PROMPT, input))
             if (text.isBlank()) throw IllegalStateException("Gemini ไม่มีข้อความในผลลัพธ์")
             val clean = OcrCommon.sanitizeJson(text)
             OcrCommon.parseDocument(clean) to clean

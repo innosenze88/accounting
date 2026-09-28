@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.data.booking.AuditLogEntity
 import com.example.data.booking.BookingDao
 import com.example.data.booking.BookingEntity
 import com.example.data.booking.BookingPaymentEntity
@@ -23,9 +24,9 @@ import com.example.data.docs.IssuedDocumentEntity
         ExtractedDocumentEntity::class, ImportedFileEntity::class,
         BookingEntity::class, BookingPaymentEntity::class, WalletEntity::class, WalletTxnEntity::class,
         DayCloseEntity::class, IssuedDocumentEntity::class, DocSequenceEntity::class,
-        WalletPercentChangeEntity::class
+        WalletPercentChangeEntity::class, AuditLogEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -146,8 +147,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v6 -> v7: audit log of money corrections (undo day/month close, wallet adjustments) and the bank
+         * reference number of transfer slips (to catch the same slip twice).
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `audit_log` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `at` INTEGER NOT NULL, " +
+                        "`action` TEXT NOT NULL, `detail` TEXT NOT NULL, `reason` TEXT NOT NULL)"
+                )
+                db.execSQL("ALTER TABLE extracted_documents ADD COLUMN referenceNo TEXT")
+            }
+        }
+
         /** Every future schema change must add its Migration here. Never use destructive migration. */
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 
         /**
          * Closes the database so its file can be replaced (restore from a backup).

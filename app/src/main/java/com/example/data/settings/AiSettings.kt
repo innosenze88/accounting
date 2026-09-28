@@ -58,24 +58,44 @@ data class AiSettings(
 /**
  * Stores AI provider settings in app-private SharedPreferences ("ai_settings").
  * The file is excluded from cloud backup and device transfer (see res/xml backup rules).
+ * API keys, the Sheets token and the backup password are encrypted with the phone's Keystore ([SecretCodec]).
  */
 class AiSettingsRepository(context: Context) {
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val cipher: SecretCipher? = KeystoreCipher.createOrNull()
+
+    private fun secret(key: String): String {
+        val stored = prefs.getString(key, null)
+        val value = SecretCodec.decode(stored, cipher)
+        // Values saved by older versions are plain text: encrypt them now.
+        if (SecretCodec.needsUpgrade(stored) && cipher != null) {
+            prefs.edit().putString(key, SecretCodec.encode(value, cipher)).apply()
+        }
+        return value
+    }
+
+    private fun putSecret(e: android.content.SharedPreferences.Editor, key: String, value: String) =
+        e.putString(key, SecretCodec.encode(value, cipher))
+
+    /** Password for backup files ("" = backups are not encrypted). */
+    var backupPassword: String
+        get() = secret(KEY_BACKUP_PASSWORD)
+        set(v) { putSecret(prefs.edit(), KEY_BACKUP_PASSWORD, v).apply() }
 
     private val _settings = MutableStateFlow(load())
     val settings: StateFlow<AiSettings> = _settings.asStateFlow()
 
     private fun load(): AiSettings = AiSettings(
         provider = AiProvider.fromCode(prefs.getString(KEY_PROVIDER, null)),
-        geminiApiKey = prefs.getString(KEY_GEMINI_KEY, "") ?: "",
+        geminiApiKey = secret(KEY_GEMINI_KEY),
         geminiModel = prefs.getString(KEY_GEMINI_MODEL, AiSettings.DEFAULT_GEMINI_MODEL) ?: AiSettings.DEFAULT_GEMINI_MODEL,
-        claudeApiKey = prefs.getString(KEY_CLAUDE_KEY, "") ?: "",
+        claudeApiKey = secret(KEY_CLAUDE_KEY),
         claudeModel = prefs.getString(KEY_CLAUDE_MODEL, AiSettings.DEFAULT_CLAUDE_MODEL) ?: AiSettings.DEFAULT_CLAUDE_MODEL,
         claudeWorkspaceId = prefs.getString(KEY_CLAUDE_WORKSPACE, "") ?: "",
         sheetsWebAppUrl = prefs.getString(KEY_SHEETS_URL, "") ?: "",
-        sheetsToken = prefs.getString(KEY_SHEETS_TOKEN, null) ?: newToken().also {
-            prefs.edit().putString(KEY_SHEETS_TOKEN, it).apply()
+        sheetsToken = secret(KEY_SHEETS_TOKEN).ifEmpty {
+            newToken().also { putSecret(prefs.edit(), KEY_SHEETS_TOKEN, it).apply() }
         },
         sheetsAutoSync = prefs.getBoolean(KEY_SHEETS_AUTO, true)
     )
@@ -90,17 +110,17 @@ class AiSettingsRepository(context: Context) {
             sheetsWebAppUrl = settings.sheetsWebAppUrl.trim(),
             sheetsToken = settings.sheetsToken.trim()
         )
-        prefs.edit()
+        val e = prefs.edit()
             .putString(KEY_PROVIDER, clean.provider.code)
-            .putString(KEY_GEMINI_KEY, clean.geminiApiKey)
             .putString(KEY_GEMINI_MODEL, clean.geminiModel)
-            .putString(KEY_CLAUDE_KEY, clean.claudeApiKey)
             .putString(KEY_CLAUDE_MODEL, clean.claudeModel)
             .putString(KEY_CLAUDE_WORKSPACE, clean.claudeWorkspaceId)
             .putString(KEY_SHEETS_URL, clean.sheetsWebAppUrl)
-            .putString(KEY_SHEETS_TOKEN, clean.sheetsToken)
             .putBoolean(KEY_SHEETS_AUTO, clean.sheetsAutoSync)
-            .apply()
+        putSecret(e, KEY_GEMINI_KEY, clean.geminiApiKey)
+        putSecret(e, KEY_CLAUDE_KEY, clean.claudeApiKey)
+        putSecret(e, KEY_SHEETS_TOKEN, clean.sheetsToken)
+        e.apply()
         _settings.value = clean
     }
 
@@ -115,6 +135,7 @@ class AiSettingsRepository(context: Context) {
         private const val KEY_SHEETS_URL = "sheets_web_app_url"
         private const val KEY_SHEETS_TOKEN = "sheets_token"
         private const val KEY_SHEETS_AUTO = "sheets_auto_sync"
+        private const val KEY_BACKUP_PASSWORD = "backup_password"
 
         /** Random 24-character secret for the Apps Script. */
         fun newToken(): String {
