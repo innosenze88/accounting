@@ -1,0 +1,22 @@
+package com.example
+
+import com.example.data.sheets.SheetsClient
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class SheetsReservedNameTest {
+    @Test
+    fun appSheetsCannotBeImportTargets() {
+        listOf("Accounting", " accounting ", "Voided", "LINEINBOX", "eZee_Reports", "ezee_revenue").forEach {
+            assertTrue(it, SheetsClient.isReservedSheet(it))
+        }
+    }
+
+    @Test
+    fun ordinarySheetNamesAreAllowed() {
+        listOf("Import", "Bank statement", "Accounting 2026", "eZee").forEach {
+            assertFalse(it, SheetsClient.isReservedSheet(it))
+        }
+    }
+}

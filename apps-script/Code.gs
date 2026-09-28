@@ -219,10 +219,24 @@ function upsertReport_(r) {
   return { ok: true, rows: rows.length };
 }
 
+// Sheets the app writes itself. A CSV / Excel import must never write into them.
+const RESERVED_SHEETS_ = ['accounting', 'voided', 'lineinbox'];
+const MAX_TABLE_ROWS_ = 1000; // per chunk (the app sends 500)
+
+// Compares the name the same way sheet_() cleans it, so "Accounting " or "eZee_x" are caught too.
+function isReservedSheet_(name) {
+  const n = String(name || 'Import').replace(/[\[\]\*\?\/\\:]/g, '_').substring(0, 90).trim().toLowerCase();
+  return n.indexOf('ezee_') === 0 || RESERVED_SHEETS_.indexOf(n) !== -1;
+}
+
 // CSV / Excel rows. Chunks are ordered and idempotent per importId/chunkIndex.
 function appendTable_(b) {
   if (!b || typeof b.importId !== 'string' || !b.importId || !Array.isArray(b.headers) || !Array.isArray(b.rows) || !Number.isInteger(b.chunkIndex) || b.chunkIndex < 0) {
     throw new Error('invalid table chunk');
+  }
+  if (b.rows.length > MAX_TABLE_ROWS_) throw new Error('too many rows in one chunk');
+  if (isReservedSheet_(b.sheetName)) {
+    throw new Error('ชื่อแผ่นงาน "' + b.sheetName + '" ใช้โดยแอปอยู่แล้ว ตั้งชื่ออื่น');
   }
   const sh = sheet_(b.sheetName);
   const existingHeaders = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(b.headers));
