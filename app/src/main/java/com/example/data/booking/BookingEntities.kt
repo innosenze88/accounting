@@ -166,3 +166,33 @@ data class DayCloseEntity(
     val cashCounted: Double? = null,
     val note: String? = null
 )
+
+/**
+ * A change of the wallets' % (e.g. raising "ค่าน้ำ-ค่าไฟ" when bills are high), kept forever as a record.
+ * [beforePercents] / [afterPercents] are the % of every wallet ([WalletPercentRules.encode]) so an old setting can be used again.
+ */
+@Entity(tableName = "wallet_percent_changes")
+data class WalletPercentChangeEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val changedAt: Long = System.currentTimeMillis(),
+    val reason: String,
+    /** Readable summary, e.g. "ค่าน้ำ-ค่าไฟ 10→15%, เงินเก็บ 10→5%". */
+    val summary: String,
+    val beforePercents: String,
+    val afterPercents: String
+)
+
+/**
+ * Record of corrections that change money already booked: undoing a day close or a month close,
+ * manual wallet adjustments. Never deleted.
+ */
+@Entity(tableName = "audit_log")
+data class AuditLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val at: Long = System.currentTimeMillis(),
+    /** e.g. UNDO_DAY_CLOSE, UNDO_MONTH_CLOSE, WALLET_ADJUST */
+    val action: String,
+    /** What was changed, in Thai (amounts, dates, wallet). */
+    val detail: String,
+    val reason: String
+)

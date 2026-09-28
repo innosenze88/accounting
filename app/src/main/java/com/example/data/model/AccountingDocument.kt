@@ -48,7 +48,11 @@ data class AccountingDocumentJson(
     val paymentMethod: String? = null,
 
     @param:Json(name = "line_items")
-    val lineItems: List<LineItemJson>? = emptyList()
+    val lineItems: List<LineItemJson>? = emptyList(),
+
+    /** Bank reference / transaction no. of a transfer slip (catches the same slip sent twice). */
+    @param:Json(name = "reference_no")
+    val referenceNo: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -74,6 +78,7 @@ enum class DocumentType(val code: String, val titleTh: String, val descriptionTh
     PAYMENT_VOUCHER("PAYMENT_VOUCHER", "ใบสำคัญจ่าย", "ใบสำคัญจ่าย / บิลจ่ายเงิน"),
     UTILITY_BILL("UTILITY_BILL", "บิลค่าน้ำ/ค่าไฟ", "บิลค่าน้ำ / ค่าไฟฟ้า / ค่าโทรศัพท์ / อินเทอร์เน็ต"),
     ADVANCE_DEPOSIT("ADVANCE_DEPOSIT", "ใบเสร็จมัดจำล่วงหน้า", "ใบเสร็จรับเงินมัดจำล่วงหน้า / เงินรับฝาก"),
+    TRANSFER_SLIP("TRANSFER_SLIP", "สลิปโอนเงิน", "สลิปโอนเงิน / สลิปแอปธนาคาร / QR พร้อมเพย์"),
     OTHER("OTHER", "เอกสารอื่นๆ", "เอกสารอื่นๆ ที่ไม่เข้าพวก");
 
     companion object {

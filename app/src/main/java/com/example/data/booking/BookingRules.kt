@@ -67,6 +67,30 @@ object BookingRules {
         )
     }
 
+    /** Scanned slips attached to an active payment: their money is counted by the booking, not as a document. */
+    fun linkedSlipIds(payments: List<BookingPaymentEntity>): Set<Long> =
+        payments.filter { it.isActive }.mapNotNull { it.slipDocumentId }.toSet()
+
+    /** A scanned income document that can be attached to a payment as its slip. */
+    data class SlipOption(val documentId: Long, val amount: Double?, val date: String?, val label: String)
+
+    /**
+     * Slips to offer when recording a payment: not attached to another payment yet, best match first
+     * (same amount, then the closest date), at most [limit].
+     */
+    fun slipChoices(options: List<SlipOption>, linked: Set<Long>, amount: Double?, date: String, limit: Int = 8): List<SlipOption> {
+        val free = options.filter { it.documentId !in linked }
+        fun sameAmount(o: SlipOption) = amount != null && o.amount != null &&
+            WalletMath.toSatang(o.amount) == WalletMath.toSatang(amount)
+        fun dayGap(o: SlipOption): Int = o.date?.let { d -> WalletMath.nights(d, date)?.let { kotlin.math.abs(it) } } ?: Int.MAX_VALUE
+        return free.sortedWith(compareBy<SlipOption>({ !sameAmount(it) }, { dayGap(it) }, { -it.documentId })).take(limit)
+    }
+
+    /** true when [o] looks like the slip of this payment (same amount, within 3 days). */
+    fun isLikelySlip(o: SlipOption, amount: Double?, date: String): Boolean =
+        amount != null && o.amount != null && WalletMath.toSatang(o.amount) == WalletMath.toSatang(amount) &&
+            (o.date?.let { d -> WalletMath.nights(d, date)?.let { kotlin.math.abs(it) <= 3 } } ?: false)
+
     /** Current balance of each wallet (active movements only). */
     fun balances(txns: List<WalletTxnEntity>): Map<Long, Double> =
         txns.filter { it.isActive }.groupBy { it.walletId }
@@ -135,9 +159,26 @@ object BookingRules {
         ) + split(setup, deposits, date, TxnSource.BOOKING, booking.id, "$note (จากมัดจำ)")
     }
 
-    /** Result of a cancellation: the refund payment to record and the wallet movements. */
-    data class Cancellation(val refund: Double, val kept: Double, val txns: List<WalletTxnEntity>)
+    /**
+     * Result of a cancellation: [paid] = everything the guest paid (deposits + balance payments),
+     * [refund] goes back to the guest, [kept] stays as income. [refund] + [kept] = [paid].
+     */
+    data class Cancellation(val paid: Double, val refund: Double, val kept: Double, val txns: List<WalletTxnEntity>)
 
+    /** What a cancellation would do, without saving anything (shown in the confirm dialog). */
+    fun cancellationPreview(money: BookingMoney, refundPercent: Double): Triple<Double, Double, Double> {
+        val paid = WalletMath.toBaht(WalletMath.toSatang(money.deposits) + WalletMath.toSatang(money.balancePaid))
+        val (refund, kept) = WalletMath.cancellationSplit(paid, refundPercent)
+        return Triple(paid, refund, kept)
+    }
+
+    /**
+     * Cancels a booking. The refund % applies to ALL money the guest paid, not only the deposit:
+     *  - deposits leave the advance wallet in one go;
+     *  - balance payments were already split into the wallets as income, so only the difference
+     *    (kept − balance already split) is split now. When the refund is bigger than what is still in the
+     *    advance wallet, the difference is taken back out of the wallets with the same % (negative split).
+     */
     fun cancel(
         setup: WalletSetup,
         booking: BookingEntity,
@@ -146,17 +187,26 @@ object BookingRules {
         refundPercent: Double
     ): Cancellation {
         require(booking.settledAt == null) { "การจองนี้เช็คเอาท์/ยกเลิกไปแล้ว" }
-        val deposits = money(booking, payments).deposits
-        if (deposits <= 0.0) return Cancellation(0.0, 0.0, emptyList())
-        val (refund, kept) = WalletMath.cancellationSplit(deposits, refundPercent)
+        val m = money(booking, payments)
+        val (paid, refund, kept) = cancellationPreview(m, refundPercent)
+        if (paid <= 0.0) return Cancellation(0.0, 0.0, 0.0, emptyList())
         val note = "ยกเลิก ${booking.guestName} ห้อง ${booking.roomNo}"
-        val out = WalletTxnEntity(
-            walletId = setup.advance.id, amount = -deposits, kind = WalletTxnKind.ADVANCE_OUT.code, date = date,
-            sourceType = TxnSource.BOOKING.code, sourceId = booking.id,
-            note = "$note (คืนลูกค้า ${fmt(refund)}, เป็นรายได้ ${fmt(kept)})"
-        )
-        val income = if (kept > 0) split(setup, kept, date, TxnSource.BOOKING, booking.id, "$note (มัดจำที่ไม่คืน)") else emptyList()
-        return Cancellation(refund, kept, listOf(out) + income)
+        val txns = mutableListOf<WalletTxnEntity>()
+        if (m.deposits > 0) {
+            txns += WalletTxnEntity(
+                walletId = setup.advance.id, amount = -m.deposits, kind = WalletTxnKind.ADVANCE_OUT.code, date = date,
+                sourceType = TxnSource.BOOKING.code, sourceId = booking.id,
+                note = "$note (จ่ายมา ${fmt(paid)}: คืนลูกค้า ${fmt(refund)}, เป็นรายได้ ${fmt(kept)})"
+            )
+        }
+        // Income already in the wallets = the balance payments. Adjust it to what is really kept.
+        val change = WalletMath.toSatang(kept) - WalletMath.toSatang(m.balancePaid)
+        when {
+            change > 0 -> txns += split(setup, WalletMath.toBaht(change), date, TxnSource.BOOKING, booking.id, "$note (เงินที่ไม่คืน)")
+            change < 0 -> txns += split(setup, WalletMath.toBaht(-change), date, TxnSource.BOOKING, booking.id, "$note (คืนจากเงินที่แบ่งเข้ากระเป๋าแล้ว)")
+                .map { it.copy(amount = -it.amount) }
+        }
+        return Cancellation(paid, refund, kept, txns)
     }
 
     /**
@@ -173,6 +223,48 @@ object BookingRules {
             )
         }
         return toVoid to opposite
+    }
+
+    /**
+     * Movements of [kinds] that still count: active and not yet cancelled by an opposite ADJUST
+     * (an ADJUST of the same wallet with the opposite amount, made by [reverse] after the money was moved in MAKE).
+     * Used so a day close / month close can be undone, closed again and undone again without undoing anything twice.
+     */
+    fun outstanding(txns: List<WalletTxnEntity>, kinds: Set<WalletTxnKind>): List<WalletTxnEntity> {
+        val active = txns.filter { it.isActive }
+        val offsets = active.filter { it.txnKind == WalletTxnKind.ADJUST }
+            .groupBy { it.walletId to WalletMath.toSatang(-it.amount) }
+            .mapValues { it.value.size }.toMutableMap()
+        return active.filter { it.txnKind in kinds }.sortedBy { it.id }.filter { t ->
+            val key = t.walletId to WalletMath.toSatang(t.amount)
+            val left = offsets[key] ?: 0
+            if (left > 0) {
+                offsets[key] = left - 1
+                false
+            } else true
+        }
+    }
+
+    /** sourceId of a day close ("2026-09-25" -> 20260925). */
+    fun daySourceId(date: String): Long = date.replace("-", "").toLong()
+
+    /** sourceId of a month close ("2026-09" -> 202609). */
+    fun monthSourceId(yearMonth: String): Long = yearMonth.replace("-", "").toLong()
+
+    val MONTH_END_KINDS = setOf(WalletTxnKind.MONTH_END_OUT, WalletTxnKind.MONTH_END_IN)
+
+    /**
+     * A manual correction of one wallet (+ or −) with a reason. [alreadyInMake] = true when the pocket in MAKE
+     * is already right and only the app was wrong (nothing to transfer).
+     */
+    fun adjustment(walletId: Long, amount: Double, date: String, reason: String, alreadyInMake: Boolean, now: Long): WalletTxnEntity {
+        require(WalletMath.toSatang(amount) != 0L) { "ยอดปรับต้องไม่เป็น 0" }
+        require(reason.isNotBlank()) { "ต้องใส่เหตุผล" }
+        return WalletTxnEntity(
+            walletId = walletId, amount = WalletMath.toBaht(WalletMath.toSatang(amount)), kind = WalletTxnKind.ADJUST.code,
+            date = date, sourceType = TxnSource.MANUAL.code, note = "ปรับยอด: ${reason.trim()}",
+            transferredAt = if (alreadyInMake) now else null
+        )
     }
 
     /** Month end: every budget wallet with money left moves it to the savings wallet. */

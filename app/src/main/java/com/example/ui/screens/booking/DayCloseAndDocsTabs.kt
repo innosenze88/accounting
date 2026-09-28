@@ -53,6 +53,8 @@ internal fun DayCloseTab(vm: BookingViewModel) {
     var cashCounted by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf(false) }
+    var undo by remember { mutableStateOf(false) }
+    var undoReason by remember { mutableStateOf("") }
     val closed = closes.firstOrNull { it.date == date }
 
     // Prefill from the imported eZee Manager Report and today's direct-booking cash.
@@ -80,6 +82,9 @@ internal fun DayCloseTab(vm: BookingViewModel) {
                     Text("รายได้ eZee ${baht(closed.ezeeIncome)} บาท", fontSize = 13.sp)
                     cashLine(closed.cashExpected, closed.cashCounted)?.let { Text(it, fontSize = 13.sp) }
                     closed.note?.let { Text(it, fontSize = 12.sp) }
+                    TextButton(onClick = { undoReason = ""; undo = true }) {
+                        Text("ตัวเลขผิด? ยกเลิกการปิดยอดวันนี้", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         } else {
@@ -137,7 +142,7 @@ internal fun DayCloseTab(vm: BookingViewModel) {
             text = {
                 Text(
                     (if (income > 0) "รายได้ eZee ${baht(income)} บาท จะแบ่งเข้ากระเป๋าตาม %\n" else "ไม่มีรายได้ eZee\n") +
-                        "ปิดแล้วแก้ไขไม่ได้ (ถ้าผิดให้บันทึกปรับยอดในกระเป๋า)",
+                        "ถ้าตัวเลขผิด ยกเลิกการปิดยอดได้ภายหลัง (ต้องใส่เหตุผล)",
                     fontSize = 13.sp
                 )
             },
@@ -150,6 +155,35 @@ internal fun DayCloseTab(vm: BookingViewModel) {
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("ยังก่อน") } }
         )
     }
+    if (undo && closed != null) {
+        UndoDayCloseDialog(
+            date = closed.date, income = closed.ezeeIncome, reason = undoReason, onReason = { undoReason = it },
+            onConfirm = { vm.undoDayClose(closed.date, undoReason) { undo = false } },
+            onDismiss = { undo = false }
+        )
+    }
+}
+
+@Composable
+private fun UndoDayCloseDialog(date: String, income: Double, reason: String, onReason: (String) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ยกเลิกปิดยอด ${ThaiDate.long(date)}?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "รายได้ eZee ${baht(income)} บาทที่แบ่งเข้ากระเป๋าจะถูกกลับรายการ " +
+                        "(ถ้าโอนใน MAKE ไปแล้ว แอปจะบอกยอดที่ต้องโอนกลับ) แล้วปิดยอดใหม่ด้วยตัวเลขที่ถูกได้",
+                    fontSize = 13.sp
+                )
+                TextInput("เหตุผล (จำเป็น)", reason, onReason)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = reason.isNotBlank()) { Text("ยกเลิกปิดยอด", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ไม่ใช่") } }
+    )
 }
 
 private fun cashLine(expected: Double?, counted: Double?): String? {
@@ -259,6 +293,7 @@ private fun BusinessSettingsDialog(initial: BusinessSettings, onSave: (BusinessS
     var refund by remember { mutableStateOf(trimPercent(initial.refundPercent)) }
     var rooms by remember { mutableStateOf(initial.rooms) }
     var footer by remember { mutableStateOf(initial.footer) }
+    var bankAccounts by remember { mutableStateOf(initial.bankAccounts) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -271,6 +306,11 @@ private fun BusinessSettingsDialog(initial: BusinessSettings, onSave: (BusinessS
                 TextInput("เลขผู้เสียภาษี 13 หลัก", taxId, { taxId = it.filter { c -> c.isDigit() }.take(13) }, number = true)
                 TextInput("โทรศัพท์", phone, { phone = it })
                 TextInput("พร้อมเพย์ (เบอร์มือถือ หรือ เลข 13 หลัก)", promptPay, { promptPay = it.filter { c -> c.isDigit() } }, number = true)
+                TextInput("บัญชีธนาคารที่รับเงิน (เช่น กสิกร 123-4-56789-0)", bankAccounts, { bankAccounts = it })
+                Text(
+                    "ชื่อ, เลขผู้เสียภาษี, พร้อมเพย์ และบัญชีนี้ จะบอก AI ว่าสลิปไหนเป็นเงินเข้ารีสอร์ท (รายรับ)",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("จดทะเบียน VAT", modifier = Modifier.weight(1f))
                     Switch(checked = vat, onCheckedChange = { vat = it })
@@ -295,7 +335,7 @@ private fun BusinessSettingsDialog(initial: BusinessSettings, onSave: (BusinessS
                         phone = phone.trim(), promptPayId = promptPay, vatRegistered = vat,
                         vatRate = vatRate.toDoubleOrNull() ?: 7.0, pricesIncludeVat = includeVat,
                         refundPercent = (refund.toDoubleOrNull() ?: 50.0).coerceIn(0.0, 100.0),
-                        rooms = rooms, footer = footer.trim()
+                        rooms = rooms, footer = footer.trim(), bankAccounts = bankAccounts.trim()
                     )
                 )
             }) { Text("บันทึก") }

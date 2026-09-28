@@ -59,6 +59,7 @@ class SheetsClient {
             put("total_amount", doc.totalAmount ?: JSONObject.NULL)
             put("deposit_amount", doc.depositAmount ?: JSONObject.NULL)
             put("payment_method", doc.paymentMethod ?: JSONObject.NULL)
+            put("reference_no", doc.referenceNo ?: JSONObject.NULL)
             put("verified_at", doc.verifiedAt?.let { stamp.format(java.util.Date(it)) } ?: JSONObject.NULL)
             put("source", if (doc.sourceFilePath != null) "file" else "camera")
             if (doc.voidedAt != null) {

@@ -20,8 +20,16 @@ sealed class DocumentInput {
 
 /** Common contract for every AI provider that can read accounting documents. */
 interface OcrService {
-    /** Reads a receipt/slip/bill. Returns the parsed document and the cleaned raw JSON text. */
-    suspend fun extract(input: DocumentInput, apiKey: String, model: String): Result<Pair<AccountingDocumentJson, String>>
+    /**
+     * Reads a receipt/slip/bill. Returns the parsed document and the cleaned raw JSON text.
+     * [businessContext] = who "we" are ([BusinessPrompt.context]) so the AI can tell income from expense.
+     */
+    suspend fun extract(
+        input: DocumentInput,
+        apiKey: String,
+        model: String,
+        businessContext: String = ""
+    ): Result<Pair<AccountingDocumentJson, String>>
 
     /** Reads a hotel PMS report (e.g. eZee PDF). Returns the cleaned JSON text (see [OcrCommon.REPORT_INSTRUCTION]). */
     suspend fun extractReport(input: DocumentInput, apiKey: String, model: String): Result<String>
@@ -56,6 +64,7 @@ internal object OcrCommon {
    - "PAYMENT_VOUCHER" : ใบสำคัญจ่าย / บิลจ่ายเงิน
    - "UTILITY_BILL" : บิลค่าน้ำ / ค่าไฟฟ้า / ค่าโทรศัพท์ / อินเทอร์เน็ต
    - "ADVANCE_DEPOSIT" : ใบเสร็จรับเงินมัดจำล่วงหน้า / เงินรับฝาก
+   - "TRANSFER_SLIP" : สลิปโอนเงิน / สลิปจากแอปธนาคาร / หลักฐานจ่าย QR พร้อมเพย์
    - "OTHER" : เอกสารอื่นๆ ที่ไม่เข้าพวก
 
 2. การกำหนดประเภททรานแซกชัน (Transaction Type):
@@ -76,6 +85,7 @@ internal object OcrCommon {
    - total_amount : "จำนวนเงินรวมทั้งสิ้น", "รวมทั้งสิ้น", "Total Amount", "Grand Total", "ยอดชำระ"
    - deposit_amount : "เงินมัดจำ", "หักมัดจำ", "Deposit", "Advance Payment" (ถ้ามี)
    - payment_method : "เงินสด", "โอนเงิน", "บัตรเครดิต", "Cash", "Transfer", "Credit Card" (หากระบุ)
+   - reference_no : เลขที่รายการ / รหัสอ้างอิงของธนาคาร (มีในสลิปโอนเงิน) ถ้าไม่มีให้เป็น null
    - line_items : รายการสินค้า/บริการย่อย โดยสกัดเป็น Array ของ Object [{ item_name, quantity, unit_price, total_price }]
 
 4. กฎการทำความสะอาดและจัดฟอร์แมตข้อมูล (Data Formatting Rules):
@@ -86,6 +96,9 @@ internal object OcrCommon {
 5. การส่งผลลัพธ์ (Output Format):
    - ให้ตอบกลับเฉพาะ JSON Object ตาม Schema ที่ระบุไว้เท่านั้น
    - ห้ามใส่คำเกริ่น คำอธิบาย หรือ Markdown อื่นๆ นอกเหนือจากตัวโครงสร้าง JSON"""
+
+    /** Full system instruction for documents: base rules + transfer slip rules + the resort's identity. */
+    fun documentInstruction(businessContext: String): String = SYSTEM_INSTRUCTION + BusinessPrompt.SLIP_RULES + businessContext
 
     const val REPORT_PROMPT = "อ่านรายงานนี้และสรุปเป็น JSON ตาม Schema ที่กำหนดเท่านั้น"
 
@@ -206,6 +219,7 @@ Never invent values. Use null when something is not in the report."""
             totalAmount = obj.optNumber("total_amount"),
             depositAmount = obj.optNumber("deposit_amount"),
             paymentMethod = obj.optText("payment_method"),
+            referenceNo = obj.optText("reference_no"),
             lineItems = items
         )
     }
