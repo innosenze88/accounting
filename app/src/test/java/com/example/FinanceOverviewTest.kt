@@ -106,6 +106,18 @@ class FinanceOverviewTest {
     }
 
     @Test
+    fun `money still owed after check-out stays in the amount to collect`() {
+        val checkedOut = openBooking.copy(id = 2, status = BookingStatus.CHECKED_OUT.code, settledAt = 1L)
+        val cancelled = openBooking.copy(id = 3, status = BookingStatus.CANCELLED.code, settledAt = 1L)
+        val all = bookings +
+            (checkedOut to BookingMoney(total = 2000.0, deposits = 500.0, balancePaid = 0.0, refunded = 0.0)) +
+            (cancelled to BookingMoney(total = 2000.0, deposits = 500.0, balancePaid = 0.0, refunded = 250.0))
+        val o = FinanceOverviewCalc.build(docs, txns, wallets, all, setOf("2026-09-11"), ReportPeriod.THIS_MONTH, today, null)
+        assertEquals(3000.0, o.toCollect, 0.001) // 1,500 open + 1,500 checked out; the cancelled one owes nothing
+        assertEquals(2, o.toCollectBookings)
+    }
+
+    @Test
     fun `wallets add up to 100 percent`() {
         val o = build(ReportPeriod.ALL)
         assertEquals(8, o.wallets.size)
