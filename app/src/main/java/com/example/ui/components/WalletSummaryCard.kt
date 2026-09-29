@@ -39,10 +39,6 @@ import com.example.ui.viewmodel.BookingViewModel
 import com.example.util.ReportPeriod
 import java.util.Locale
 
-private val IncomeGreen = Color(0xFF2E7D32)
-private val ExpenseRed = Color(0xFFC62828)
-private val Warn = Color(0xFFE65100)
-
 private fun baht(v: Double) = String.format(Locale.US, "%,.0f", v)
 private fun pct(p: Double) = if (p % 1.0 == 0.0) p.toLong().toString() else String.format(Locale.US, "%.1f", p)
 
@@ -97,14 +93,20 @@ fun FinanceOverviewCard(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.testTag("finance_overview")) {
         // (1) (2) income, expenses, profit of the period
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            BigTile("รายรับรวม", o.income, IncomeGreen, Color(0xFFE8F5E9), Modifier.weight(1f))
-            BigTile("รายจ่ายรวม", o.expense, ExpenseRed, Color(0xFFFFEBEE), Modifier.weight(1f))
+            BigTile(
+                "รายรับรวม", o.income, MaterialTheme.colorScheme.secondary,
+                MaterialTheme.colorScheme.secondaryContainer, Modifier.weight(1f)
+            )
+            BigTile(
+                "รายจ่ายรวม", o.expense, MaterialTheme.colorScheme.error,
+                MaterialTheme.colorScheme.errorContainer, Modifier.weight(1f)
+            )
         }
         BigTile(
             if (o.profit >= 0) "กำไรสุทธิ" else "ขาดทุนสุทธิ",
             o.profit,
-            if (o.profit >= 0) IncomeGreen else ExpenseRed,
-            Color(0xFFE3F2FD),
+            if (o.profit >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
+            MaterialTheme.colorScheme.primaryContainer,
             Modifier.fillMaxWidth(),
             featured = true
         )
@@ -127,10 +129,14 @@ fun FinanceOverviewCard(
 
         // (3) (4) money held and money still to collect (right now, not by period)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            SmallTile("เงินมัดจำล่วงหน้า", o.advance, "ยังไม่ใช่รายได้ • ตอนนี้", Color(0xFF1565C0), Modifier.weight(1f))
+            SmallTile(
+                "เงินมัดจำล่วงหน้า", o.advance, "ยังไม่ใช่รายได้ • ตอนนี้",
+                MaterialTheme.colorScheme.primary, Modifier.weight(1f)
+            )
             SmallTile(
                 "ต้องเก็บเพิ่มตอนเช็คเอาท์", o.toCollect,
-                if (o.toCollectBookings > 0) "${o.toCollectBookings} การจอง • ตอนนี้" else "ไม่มีค้าง", Warn, Modifier.weight(1f)
+                if (o.toCollectBookings > 0) "${o.toCollectBookings} การจอง • ตอนนี้" else "ไม่มีค้าง",
+                MaterialTheme.colorScheme.tertiary, Modifier.weight(1f)
             )
         }
 
@@ -141,13 +147,18 @@ fun FinanceOverviewCard(
                     Text("กระเป๋าเงิน ${o.wallets.size} ใบ (MAKE)", fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text("จัดการ ›", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                 }
-                if (pendingTransfers > 0) Text("⚠ มี $pendingTransfers กระเป๋าที่ต้องโอนใน MAKE", fontSize = 12.sp, color = Warn, fontWeight = FontWeight.Bold)
+                if (pendingTransfers > 0) Text(
+                    "มี $pendingTransfers กระเป๋าที่ต้องโอนใน MAKE",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    fontWeight = FontWeight.Bold
+                )
                 o.wallets.forEach { w ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${pct(w.wallet.percent)}%", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
                         Text(w.wallet.name + if (w.isProfit) " (กำไร)" else "", fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Text("${baht(w.balance)} ฿", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                            color = if (w.balance < 0) ExpenseRed else MaterialTheme.colorScheme.onSurface)
+                            color = if (w.balance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 HorizontalDivider()
@@ -155,7 +166,8 @@ fun FinanceOverviewCard(
                     Text("รวม %", fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text(
                         "${pct(o.percentTotal)}% " + if (o.percentOk) "✓" else "— ต้องได้ 100%",
-                        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (o.percentOk) IncomeGreen else ExpenseRed
+                        fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        color = if (o.percentOk) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
                     )
                 }
                 Row {
@@ -176,7 +188,7 @@ private fun YearPlanCard(plan: YearPlan?) {
     Card(
         Modifier.fillMaxWidth().testTag("year_plan_card"),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (plan == null) {
@@ -187,14 +199,19 @@ private fun YearPlanCard(plan: YearPlan?) {
             Text("ประมาณการทั้งปี ${plan.year}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Text("รายรับเฉลี่ย ${baht(plan.avgMonthlyIncome)} ฿/เดือน • ${plan.basis}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Line("รายรับทั้งปี (×12)", plan.income, bold = true)
-            Line("ค่าใช้จ่ายตามงบ (${pct(plan.expensePercent)}%)", plan.expenseBudget, color = ExpenseRed)
-            Line("กำไร / เงินเก็บ (${pct(plan.profitPercent)}%)", plan.profit, color = IncomeGreen, bold = true)
+            Line("ค่าใช้จ่ายตามงบ (${pct(plan.expensePercent)}%)", plan.expenseBudget, color = MaterialTheme.colorScheme.error)
+            Line("กำไร / เงินเก็บ (${pct(plan.profitPercent)}%)", plan.profit, color = MaterialTheme.colorScheme.secondary, bold = true)
 
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             Text("จริงตั้งแต่ต้นปีถึงวันนี้", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Line("รายรับ", plan.incomeSoFar)
             Line("รายจ่าย", plan.expenseSoFar)
-            Line(if (plan.profitSoFar >= 0) "กำไร" else "ขาดทุน", plan.profitSoFar, color = if (plan.profitSoFar >= 0) IncomeGreen else ExpenseRed, bold = true)
+            Line(
+                if (plan.profitSoFar >= 0) "กำไร" else "ขาดทุน",
+                plan.profitSoFar,
+                color = if (plan.profitSoFar >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
+                bold = true
+            )
             if (plan.income > 0) {
                 val progress = (plan.incomeSoFar / plan.income).toFloat().coerceIn(0f, 1f)
                 LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
@@ -205,7 +222,7 @@ private fun YearPlanCard(plan: YearPlan?) {
             if (short.isNotEmpty()) {
                 Text(
                     "⚠ % ไม่พอเป้า: " + short.joinToString { "${it.wallet.name} ขาด ${baht(it.shortBy)} ฿/ปี" },
-                    fontSize = 12.sp, color = Warn
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.tertiary
                 )
             }
 
@@ -220,14 +237,15 @@ private fun YearPlanCard(plan: YearPlan?) {
                     Column {
                         Row {
                             Text("${l.wallet.name} ${pct(l.wallet.percent)}%", fontSize = 12.sp, modifier = Modifier.weight(1f),
-                                color = if (l.isProfit) IncomeGreen else MaterialTheme.colorScheme.onSurface)
+                                color = if (l.isProfit) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface)
                             Text(baht(l.month), fontSize = 12.sp, modifier = Modifier.padding(end = 12.dp))
                             Text(baht(l.year), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                         l.targetYear?.let {
                             Text(
                                 "เป้า ${baht(it / 12)}/เดือน" + if (l.shortBy > 0) " → ขาด ${baht(l.shortBy)}/ปี" else " ✓ พอ",
-                                fontSize = 10.sp, color = if (l.shortBy > 0) Warn else IncomeGreen
+                                fontSize = 10.sp,
+                                color = if (l.shortBy > 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary
                             )
                         }
                     }

@@ -19,11 +19,18 @@ val SlateBorder = Color(0xFFE2E8F0)
 val SlateTextDark = Color(0xFF0F172A)
 val SlateTextMuted = Color(0xFF64748B)
 
-// Keep template compatibility variables
-val Purple80 = Color(0xFFB0C4DE)
-val PurpleGrey80 = Color(0xFFCBD5E1)
-val Pink80 = Color(0xFFF1F5F9)
+val BrandBlueContainer = Color(0xFFEAF1FB)
+val BrandGreenContainer = Color(0xFFE8F5E9)
+val BrandAmberContainer = Color(0xFFFFF4DE)
+val BrandRedContainer = Color(0xFFFDE8E7)
+val NightBackground = Color(0xFF10141A)
+val NightSurface = Color(0xFF191D24)
+val NightSurfaceVariant = Color(0xFF2E3440)
 
-val Purple40 = Color(0xFF133E87)
-val PurpleGrey40 = Color(0xFF475569)
-val Pink40 = Color(0xFF2E7D32)
+// Compatibility aliases retained for any older previews or components.
+val Purple80 = Color(0xFFA8C7FA)
+val PurpleGrey80 = Color(0xFFC2C6D0)
+val Pink80 = Color(0xFF8CDC9A)
+val Purple40 = NavyPrimary
+val PurpleGrey40 = SlateTextMuted
+val Pink40 = EmeraldAccent

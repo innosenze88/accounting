@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,7 +42,6 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -178,7 +178,7 @@ fun DashboardScreen(
                         .clickable(onClick = onNavigateToHistory)
                         .testTag("dashboard_pending_banner"),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
@@ -189,18 +189,18 @@ fun DashboardScreen(
                                 text = "มี $pendingCount เอกสารรอตรวจสอบ",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF6D4C00)
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
                             )
                             Text(
                                 text = "ยังไม่ถูกนับในยอดด้านล่าง — แตะเพื่อไปตรวจและยืนยัน",
                                 fontSize = 12.sp,
-                                color = Color(0xFF6D4C00)
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
                             )
                         }
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = null,
-                            tint = Color(0xFF6D4C00)
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
                 }
@@ -256,19 +256,52 @@ fun DashboardScreen(
 
         // Period filter: today / this month / last month / all
         item {
-            Row(
+            LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("dashboard_period_filter"),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                ReportPeriod.entries.forEach { p ->
+                items(ReportPeriod.entries) { p ->
                     FilterChip(
                         selected = period == p,
                         onClick = { period = p },
                         label = { Text(p.titleTh, fontSize = 13.sp) },
                         modifier = Modifier.testTag("period_${p.name}")
                     )
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onNavigateToScan,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("dashboard_btn_quick_scan"),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("สแกนเอกสาร", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                OutlinedButton(
+                    onClick = onNavigateToHistory,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("dashboard_btn_all_history"),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("ดูประวัติ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -287,39 +320,6 @@ fun DashboardScreen(
             )
         }
 
-        // Quick Action Bar
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = onNavigateToScan,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("dashboard_btn_quick_scan"),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("สแกนเอกสารใหม่", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                OutlinedButton(
-                    onClick = onNavigateToHistory,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("dashboard_btn_all_history"),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("ประวัติทั้งหมด", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-
         item {
             Text(
                 text = "เฉพาะเอกสารที่สแกนและยืนยันแล้ว (ไม่รวมยอดจองและกระเป๋าเงิน)",
@@ -332,8 +332,16 @@ fun DashboardScreen(
         // Net Cash Flow Card
         item {
             val isSurplus = netBalance >= 0
-            val netColor = if (isSurplus) Color(0xFF1B5E20) else Color(0xFFC62828)
-            val netBg = if (isSurplus) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
+            val netColor = if (isSurplus) {
+                MaterialTheme.colorScheme.onSecondaryContainer
+            } else {
+                MaterialTheme.colorScheme.onErrorContainer
+            }
+            val netBg = if (isSurplus) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.errorContainer
+            }
 
             Card(
                 modifier = Modifier
@@ -395,8 +403,8 @@ fun DashboardScreen(
                     amount = String.format("%,.2f ฿", totalIncome),
                     subtitle = "$incomeCount เอกสาร",
                     icon = Icons.AutoMirrored.Filled.TrendingUp,
-                    accentColor = Color(0xFF2E7D32),
-                    backgroundColor = Color(0xFFE8F5E9),
+                    accentColor = MaterialTheme.colorScheme.secondary,
+                    backgroundColor = MaterialTheme.colorScheme.secondaryContainer,
                     modifier = Modifier.fillMaxWidth().testTag("dashboard_stat_income")
                 )
 
@@ -405,8 +413,8 @@ fun DashboardScreen(
                     amount = String.format("%,.2f ฿", totalExpense),
                     subtitle = "$expenseCount เอกสาร",
                     icon = Icons.AutoMirrored.Filled.TrendingDown,
-                    accentColor = Color(0xFFC62828),
-                    backgroundColor = Color(0xFFFFEBEE),
+                    accentColor = MaterialTheme.colorScheme.error,
+                    backgroundColor = MaterialTheme.colorScheme.errorContainer,
                     modifier = Modifier.fillMaxWidth().testTag("dashboard_stat_expense")
                 )
             }
@@ -414,6 +422,8 @@ fun DashboardScreen(
 
         // Ratio Bar (Income vs Expense)
         item {
+            val incomeColor = MaterialTheme.colorScheme.secondary
+            val expenseColor = MaterialTheme.colorScheme.error
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -446,19 +456,19 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .weight(incomeRatio.coerceAtLeast(0.01f))
                                     .height(12.dp)
-                                    .background(Color(0xFF2E7D32))
+                                    .background(incomeColor)
                             )
                             Box(
                                 modifier = Modifier
                                     .weight(expenseRatio.coerceAtLeast(0.01f))
                                     .height(12.dp)
-                                    .background(Color(0xFFC62828))
+                                    .background(expenseColor)
                             )
                         } else {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(Color.LightGray.copy(alpha = 0.5f))
+                                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             )
                         }
                     }
@@ -473,14 +483,14 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .size(10.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF2E7D32))
+                                    .background(incomeColor)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "รายรับ ${String.format("%.1f%%", if (totalFlow > 0) incomeRatio * 100 else 0.0)}",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFF2E7D32)
+                                color = incomeColor
                             )
                         }
 
@@ -489,14 +499,14 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .size(10.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFFC62828))
+                                    .background(expenseColor)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "รายจ่าย ${String.format("%.1f%%", if (totalFlow > 0) expenseRatio * 100 else 0.0)}",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFFC62828)
+                                color = expenseColor
                             )
                         }
                     }
@@ -571,7 +581,7 @@ fun DashboardScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "สรุปข้อมูลภาษีและการตรวจสอบ Tax ID",
+                            text = "สรุปภาษีและเลขประจำตัวผู้เสียภาษี",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -585,11 +595,11 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text("ยอดรวมก่อนภาษี (Subtotal)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("ยอดก่อนภาษี", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(String.format("%,.2f ฿", totalSubtotal), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("ยอดรวมทั้งสิ้น (Grand Total)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("ยอดรวมทั้งสิ้น", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(String.format("%,.2f ฿", totalOverallAmount), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
                     }
@@ -605,7 +615,7 @@ fun DashboardScreen(
                             String.format("%,.2f ฿", totalVat),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF512DA8),
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.testTag("dashboard_stat_vat")
                         )
                     }
@@ -620,7 +630,7 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "เอกสารที่มีเลขประจำตัวผู้เสียภาษี 13 หลัก",
+                            text = "เอกสารที่มีเลขประจำตัวผู้เสียภาษี",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -858,13 +868,14 @@ private fun TypeBreakdownRow(
     stat: TypeStat,
     maxCount: Int
 ) {
+    val colors = MaterialTheme.colorScheme
     val (icon, tint) = when (stat.type) {
-        DocumentType.RECEIPT -> Icons.Default.Receipt to Color(0xFF1B5E20)
-        DocumentType.PAYMENT_VOUCHER -> Icons.Default.Payments to Color(0xFFC62828)
-        DocumentType.UTILITY_BILL -> Icons.Default.ElectricBolt to Color(0xFF1565C0)
-        DocumentType.ADVANCE_DEPOSIT -> Icons.Default.AccountBalance to Color(0xFF6A1B9A)
-        DocumentType.TRANSFER_SLIP -> Icons.Default.SwapHoriz to Color(0xFF00695C)
-        DocumentType.OTHER -> Icons.Default.Description to Color(0xFF455A64)
+        DocumentType.RECEIPT -> Icons.Default.Receipt to colors.secondary
+        DocumentType.PAYMENT_VOUCHER -> Icons.Default.Payments to colors.error
+        DocumentType.UTILITY_BILL -> Icons.Default.ElectricBolt to colors.primary
+        DocumentType.ADVANCE_DEPOSIT -> Icons.Default.AccountBalance to colors.tertiary
+        DocumentType.TRANSFER_SLIP -> Icons.Default.SwapHoriz to colors.secondary
+        DocumentType.OTHER -> Icons.Default.Description to colors.onSurfaceVariant
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -893,11 +904,6 @@ private fun TypeBreakdownRow(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = stat.type.code,
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -939,7 +945,11 @@ private fun RecentDocumentCard(
     onLoadToScanner: () -> Unit
 ) {
     val isIncome = entity.transactionType.equals("INCOME", ignoreCase = true)
-    val amountColor = if (isIncome) Color(0xFF2E7D32) else Color(0xFFC62828)
+    val amountColor = if (isIncome) {
+        MaterialTheme.colorScheme.secondary
+    } else {
+        MaterialTheme.colorScheme.error
+    }
 
     Card(
         modifier = Modifier

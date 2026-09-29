@@ -59,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,6 +113,7 @@ fun ScannerScreen(
     val selectedPdfName by viewModel.selectedPdfName.collectAsStateWithLifecycle()
 
     var activeResultTab by remember { mutableIntStateOf(0) }
+    var showSamples by rememberSaveable { mutableStateOf(false) }
     val duplicateOf by viewModel.duplicateOfCurrent.collectAsStateWithLifecycle()
     val actionMessage by viewModel.actionMessage.collectAsStateWithLifecycle()
     var showVoidDialog by remember { mutableStateOf(false) }
@@ -191,14 +193,14 @@ fun ScannerScreen(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "AI Accountant & OCR Expert",
-                        fontSize = 17.sp,
+                        text = "สแกนเอกสารบัญชี",
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Text(
-                        text = "อ่าน สกัดข้อมูล จำแนกประเภทเอกสารบัญชี แปลงเป็น JSON",
-                        fontSize = 12.sp,
+                        text = "ถ่ายรูปหรือเลือกรูป แล้วตรวจข้อมูลก่อนยืนยัน",
+                        fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     )
                 }
@@ -207,49 +209,37 @@ fun ScannerScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Preset Sample Documents Section
         Text(
-            text = "เลือกเอกสารตัวอย่างเพื่อทดสอบ (4 รูปแบบมาตรฐาน):",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
+            text = "เริ่มต้น",
+            style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "ถ่ายเอกสารหรือเลือกรูปจากเครื่อง",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+        )
 
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            items(SampleDocumentGenerator.SAMPLES) { sample ->
-                SampleDocChip(
-                    sample = sample,
-                    isSelected = selectedSample?.id == sample.id,
-                    onClick = { viewModel.selectSample(sample) }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Camera / Gallery Action Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(
+            Button(
                 onClick = { cameraLauncher.launch(null) },
                 modifier = Modifier
                     .weight(1f)
+                    .height(48.dp)
                     .testTag("camera_button"),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.CameraAlt,
-                    contentDescription = "กล้อง",
+                    contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("ถ่ายรูปบิล", fontSize = 12.sp)
+                Text("ถ่ายเอกสาร", fontSize = 13.sp)
             }
 
             OutlinedButton(
@@ -260,20 +250,52 @@ fun ScannerScreen(
                 },
                 modifier = Modifier
                     .weight(1f)
+                    .height(48.dp)
                     .testTag("gallery_button"),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.PhotoLibrary,
-                    contentDescription = "แกลเลอรี",
+                    contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("เลือกรูปจากเครื่อง", fontSize = 12.sp)
+                Text("เลือกรูป", fontSize = 13.sp)
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(
+            onClick = { showSamples = !showSamples },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("toggle_sample_documents")
+        ) {
+            Text(if (showSamples) "ซ่อนเอกสารตัวอย่าง" else "ลองกับเอกสารตัวอย่าง")
+        }
+        AnimatedVisibility(visible = showSamples) {
+            Column {
+                Text(
+                    text = "เลือกเอกสารตัวอย่างเพื่อทดลองอ่านและดูผลลัพธ์",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(SampleDocumentGenerator.SAMPLES) { sample ->
+                        SampleDocChip(
+                            sample = sample,
+                            isSelected = selectedSample?.id == sample.id,
+                            onClick = { viewModel.selectSample(sample) }
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Document Image Preview Box
         if (selectedBitmap != null) {
@@ -336,7 +358,7 @@ fun ScannerScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "กำลังอ่าน & สกัดข้อมูลบัญชีด้วย AI...",
+                        text = "กำลังอ่านเอกสาร...",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -348,8 +370,8 @@ fun ScannerScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "สกัดข้อมูลและจำแนกประเภท (OCR Extraction)",
-                        fontSize = 14.sp,
+                        text = "อ่านข้อมูลจากเอกสาร",
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
