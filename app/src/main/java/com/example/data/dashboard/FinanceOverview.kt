@@ -130,8 +130,9 @@ object FinanceOverviewCalc {
         txns.filter { it.isActive }.forEach { balances[it.walletId] = (balances[it.walletId] ?: 0L) + WalletMath.toSatang(it.amount) }
         fun bal(id: Long) = WalletMath.toBaht(balances[id] ?: 0L)
 
-        val open = bookings.filter { (b, _) -> b.bookingStatus == BookingStatus.BOOKED || b.bookingStatus == BookingStatus.CHECKED_IN }
-        val due = open.map { it.second.due }.filter { it > 0 }
+        // Check-out is allowed with money still owed (it can be paid later), so checked-out bookings count too.
+        val owing = bookings.filter { (b, _) -> b.bookingStatus != BookingStatus.CANCELLED }
+        val due = owing.map { it.second.due }.filter { it > 0 }
 
         val splitting = active.filter { it.walletRole != WalletRole.ADVANCE }
         val lines = splitting.map { WalletLine(it, bal(it.id), isProfit(it)) }

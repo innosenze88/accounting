@@ -129,7 +129,7 @@ fun FinanceOverviewCard(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             SmallTile("เงินมัดจำล่วงหน้า", o.advance, "ยังไม่ใช่รายได้ • ตอนนี้", Color(0xFF1565C0), Modifier.weight(1f))
             SmallTile(
-                "ต้องเก็บเพิ่มตอนเช็คเอาท์", o.toCollect,
+                "ลูกค้ายังค้างชำระ", o.toCollect,
                 if (o.toCollectBookings > 0) "${o.toCollectBookings} การจอง • ตอนนี้" else "ไม่มีค้าง", Warn, Modifier.weight(1f)
             )
         }
