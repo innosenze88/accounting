@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.core.content.IntentCompat
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -18,7 +19,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Hotel
-import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Settings
@@ -50,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.HomeDestination
+import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.ImportScreen
 import com.example.ui.screens.ScannerScreen
 import com.example.ui.screens.SettingsScreen
@@ -113,8 +116,13 @@ fun MainAppScreen(
     sharedUris: List<Uri> = emptyList(),
     onSharedUrisHandled: () -> Unit = {}
 ) {
-    var currentTab by rememberSaveable { mutableIntStateOf(0) }
+    // 6 = home menu, 0 = money overview, 1 = scan, 2 = history, 3 = import, 4 = settings, 5 = bookings
+    var currentTab by rememberSaveable { mutableIntStateOf(6) }
+    var bookingTab by rememberSaveable { mutableIntStateOf(0) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
+
+    // Back from any screen returns to the home menu first; back on the home menu leaves the app.
+    BackHandler(enabled = currentTab != 6) { currentTab = 6 }
 
     // A file shared from Gmail/Files: read it and open the Import tab.
     LaunchedEffect(sharedUri) {
@@ -143,7 +151,8 @@ fun MainAppScreen(
                 title = {
                     Text(
                         text = when (currentTab) {
-                            0 -> "ภาพรวม"
+                            6 -> "หน้าแรก"
+                            0 -> "ดูยอดเงิน"
                             1 -> "สแกนเอกสาร"
                             2 -> "ประวัติ"
                             3 -> "นำเข้าไฟล์"
@@ -165,11 +174,11 @@ fun MainAppScreen(
                 modifier = Modifier.testTag("bottom_nav_bar")
             ) {
                 NavigationBarItem(
-                    selected = currentTab == 0,
-                    onClick = { currentTab = 0 },
-                    icon = { Icon(Icons.Default.Dashboard, contentDescription = null) },
-                    label = { Text("ภาพรวม") },
-                    modifier = Modifier.testTag("nav_item_dashboard")
+                    selected = currentTab == 6 || currentTab == 0,
+                    onClick = { currentTab = 6 },
+                    icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                    label = { Text("หน้าแรก") },
+                    modifier = Modifier.testTag("nav_item_home")
                 )
                 NavigationBarItem(
                     selected = currentTab == 5,
@@ -208,18 +217,34 @@ fun MainAppScreen(
                 .padding(innerPadding)
         ) {
             when (currentTab) {
+                6 -> HomeScreen(
+                    viewModel = viewModel,
+                    bookingVm = composeViewModel<BookingViewModel>(),
+                    onOpen = { d ->
+                        when (d) {
+                            HomeDestination.SCAN -> currentTab = 1
+                            HomeDestination.HISTORY -> currentTab = 2
+                            HomeDestination.IMPORT -> currentTab = 3
+                            HomeDestination.MONEY -> currentTab = 0
+                            HomeDestination.BOOKINGS -> { bookingTab = 0; currentTab = 5 }
+                            HomeDestination.WALLETS -> { bookingTab = 1; currentTab = 5 }
+                            HomeDestination.DAY_CLOSE -> { bookingTab = 2; currentTab = 5 }
+                            HomeDestination.DOCUMENTS -> { bookingTab = 3; currentTab = 5 }
+                        }
+                    }
+                )
                 0 -> DashboardScreen(
                     viewModel = viewModel,
                     onNavigateToScan = { currentTab = 1 },
                     onNavigateToHistory = { currentTab = 2 },
                     onNavigateToSettings = { currentTab = 4 },
-                    onNavigateToBooking = { currentTab = 5 }
+                    onNavigateToBooking = { bookingTab = 1; currentTab = 5 }
                 )
                 1 -> ScannerScreen(viewModel = viewModel)
                 2 -> HistoryScreen(viewModel = viewModel, onNavigateToScan = { currentTab = 1 })
                 3 -> ImportScreen(viewModel = viewModel, onGoToScanner = { currentTab = 1 })
                 4 -> SettingsScreen(viewModel = viewModel)
-                5 -> BookingScreen(composeViewModel<BookingViewModel>())
+                5 -> BookingScreen(composeViewModel<BookingViewModel>(), tab = bookingTab, onTabChange = { bookingTab = it })
             }
         }
     }
