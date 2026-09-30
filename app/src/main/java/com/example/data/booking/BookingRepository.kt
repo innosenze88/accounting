@@ -215,7 +215,8 @@ class BookingRepository(private val db: AppDatabase) {
         check(BookingRules.outstanding(wallets.getTxnsForSource(TxnSource.MONTH_END.code, sourceId), BookingRules.MONTH_END_KINDS).isEmpty()) {
             "ปิดเดือน $yearMonth ไปแล้ว"
         }
-        val txns = BookingRules.monthEnd(setup(), BookingRules.balances(wallets.getAllTxns()), yearMonth, date)
+        check(yearMonth <= today().take(7)) { "เดือน $yearMonth ยังไม่เริ่ม" }
+        val txns = BookingRules.monthEnd(setup(), BookingRules.monthEndBalances(wallets.getAllTxns(), yearMonth), yearMonth, date)
         wallets.insertTxns(txns)
         txns.filter { it.amount > 0 }.sumOf { it.amount }
     }

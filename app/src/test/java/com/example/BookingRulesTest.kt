@@ -192,6 +192,26 @@ class BookingRulesTest {
     }
 
     @Test
+    fun monthEndLeavesNextMonthIncomeInItsWallets() {
+        val sep = BookingRules.split(setup, 10000.0, "2026-09-10", com.example.data.booking.TxnSource.EZEE, null, "eZee")
+        val oct = BookingRules.split(setup, 5000.0, "2026-10-02", com.example.data.booking.TxnSource.EZEE, null, "eZee")
+        val all = sep + oct
+        // Closing September on 3 October moves only September's leftovers.
+        val end = BookingRules.monthEnd(setup, BookingRules.monthEndBalances(all, "2026-09"), "2026-09", "2026-09-30")
+        val moved = end.filter { it.amount > 0 }.sumOf { it.amount }
+        assertEquals(10000.0 - BookingRules.balances(sep)[savingsId]!!, moved, 1e-9)
+        val after = BookingRules.balances(all + end)
+        val octOnly = BookingRules.balances(oct)
+        wallets.filter { it.walletRole == WalletRole.BUDGET }.forEach {
+            assertEquals(octOnly[it.id] ?: 0.0, after[it.id] ?: 0.0, 1e-9)
+        }
+        // Closing it again later (after October was closed) cannot move the same money twice.
+        val octEnd = BookingRules.monthEnd(setup, BookingRules.monthEndBalances(all + end, "2026-10"), "2026-10", "2026-10-31")
+        val again = BookingRules.monthEnd(setup, BookingRules.monthEndBalances(all + end + octEnd, "2026-09"), "2026-09", "2026-09-30")
+        assertTrue(again.isEmpty())
+    }
+
+    @Test
     fun bookingChecks() {
         assertNull(BookingRules.bookingProblem("คุณเอ", "5", "2026-09-30", "2026-10-02", 3000.0))
         assertNotNull(BookingRules.bookingProblem("คุณเอ", "5", "2026-10-02", "2026-09-30", 3000.0))
