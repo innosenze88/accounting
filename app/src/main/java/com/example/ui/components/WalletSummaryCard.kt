@@ -55,26 +55,20 @@ fun toCountedDocs(all: List<ExtractedDocumentEntity>): List<CountedDoc> = all.fi
     )
 }
 
-/**
- * Dashboard money overview: (1) income (2) expenses (3) deposits held (4) still to collect at check-out
- * (5) the wallets with their % (must add up to 100) and (6) what the whole year should look like.
- */
+/** The money overview for [period], built from every source without counting the same money twice. */
 @Composable
-fun FinanceOverviewCard(
+fun rememberFinanceOverview(
     vm: BookingViewModel,
     documents: List<ExtractedDocumentEntity>,
     period: ReportPeriod,
-    today: String,
-    onOpenWallets: () -> Unit
-) {
+    today: String
+): FinanceOverview {
     val bookings by vm.bookings.collectAsStateWithLifecycle()
     val wallets by vm.allWallets.collectAsStateWithLifecycle()
-    val walletViews by vm.wallets.collectAsStateWithLifecycle()
     val txns by vm.txns.collectAsStateWithLifecycle()
     val closes by vm.dayCloses.collectAsStateWithLifecycle()
     val business by vm.business.collectAsStateWithLifecycle()
-
-    val o: FinanceOverview = remember(documents, bookings, wallets, txns, closes, business, period, today) {
+    return remember(documents, bookings, wallets, txns, closes, business, period, today) {
         FinanceOverviewCalc.build(
             docs = toCountedDocs(documents),
             txns = txns,
@@ -88,6 +82,22 @@ fun FinanceOverviewCard(
             linkedSlipIds = com.example.data.booking.BookingRules.linkedSlipIds(bookings.flatMap { it.payments })
         )
     }
+}
+
+/**
+ * Dashboard money overview: (1) income (2) expenses (3) deposits held (4) still to collect at check-out
+ * (5) the wallets with their % (must add up to 100) and (6) what the whole year should look like.
+ */
+@Composable
+fun FinanceOverviewCard(
+    vm: BookingViewModel,
+    documents: List<ExtractedDocumentEntity>,
+    period: ReportPeriod,
+    today: String,
+    onOpenWallets: () -> Unit
+) {
+    val walletViews by vm.wallets.collectAsStateWithLifecycle()
+    val o: FinanceOverview = rememberFinanceOverview(vm, documents, period, today)
     val pendingTransfers = walletViews.count { kotlin.math.abs(it.toTransfer) >= 0.005 }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.testTag("finance_overview")) {
