@@ -273,7 +273,8 @@ function appendTable_(b) {
   const importId = String(b.importId);
   const sendId = b.sendId ? String(b.sendId) : '';
   const chunk = String(Number(b.chunkIndex) || 0);
-  const headers = ensureHeaders_(sh, ['import_id', 'send_id', 'chunk_index', 'file_name'].concat(b.headers));
+  const cols = b.headers.map(safeKey_);
+  const headers = ensureHeaders_(sh, ['import_id', 'send_id', 'chunk_index', 'file_name'].concat(cols));
   if (sendId) {
     deleteRowsMatching_(sh, function (row, col) {
       if (String(row[col.import_id]) !== importId) return false;
@@ -282,7 +283,7 @@ function appendTable_(b) {
   } else if (chunk === '0') {
     deleteRowsWhere_(sh, 'import_id', importId);
   }
-  const idx = b.headers.map(function (h) { return headers.indexOf(h); });
+  const idx = cols.map(function (h) { return headers.indexOf(h); });
   const idCol = headers.indexOf('import_id');
   const sendCol = headers.indexOf('send_id');
   const chunkCol = headers.indexOf('chunk_index');
@@ -294,7 +295,6 @@ function appendTable_(b) {
     out[sendCol] = sendId;
     out[chunkCol] = Number(chunk);
     out[fileCol] = b.fileName;
-    out[chunkCol] = b.chunkIndex;
     r.forEach(function (v, i) { if (idx[i] >= 0) out[idx[i]] = cell_(v); });
     return out;
   });
