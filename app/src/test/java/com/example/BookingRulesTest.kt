@@ -158,6 +158,21 @@ class BookingRulesTest {
     }
 
     @Test
+    fun cancelAfterBalanceVoidedLeavesNoIncomeFromIt() {
+        val deposit = pay(1, PaymentKind.DEPOSIT, 1000.0)
+        val balance = pay(2, PaymentKind.BALANCE, 2000.0)
+        val balanceTxns = BookingRules.onPayment(setup, balance, booking).mapIndexed { i, t -> t.copy(id = 100L + i) }
+        val (voided, opposite) = BookingRules.reverse(balanceTxns, "2026-09-25", 1L)
+        val voidedBalance = balance.copy(voidedAt = 1L, voidReason = "ลูกค้ายกเลิก")
+        val c = BookingRules.cancel(setup, booking, listOf(deposit, voidedBalance), "2026-09-25", 50.0)
+        assertEquals(500.0, c.refund, 0.0)
+        val bal = BookingRules.balances(BookingRules.onPayment(setup, deposit, booking) + voided + opposite + c.txns)
+        assertEquals(0.0, bal[advanceId] ?: 0.0, 0.0)
+        // Only the kept half of the deposit is income; nothing from the voided 2,000.
+        assertEquals(500.0, bal.filterKeys { it != advanceId }.values.sum(), 1e-9)
+    }
+
+    @Test
     fun cannotSettleTwice() {
         val settled = booking.copy(settledAt = 1L, status = BookingStatus.CHECKED_OUT.code)
         val e = runCatching { BookingRules.checkOut(setup, settled, emptyList(), "2026-10-02") }.exceptionOrNull()

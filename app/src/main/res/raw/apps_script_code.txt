@@ -209,10 +209,13 @@ function upsertReport_(r) {
     Object.keys(o).forEach(function (k) { safe[safeKey_(k)] = o[k]; });
     return safe;
   });
-  const sh = sheet_('eZee_' + (r.report_type || 'other'));
-  // Always remove the previous detail rows, including when the new report is empty.
+  const detailName = 'eZee_' + (r.report_type || 'other');
+  // Always remove the previous detail rows, including when the new report is empty,
+  // so the sheet never keeps details that are no longer in the report.
+  const sh = sheet_(detailName);
   deleteRowsWhere_(sh, 'app_id', r.app_id);
   if (rows.length) {
+
     const keys = ['app_id', 'report_date'];
     rows.forEach(function (o) {
       Object.keys(o).forEach(function (k) { if (keys.indexOf(k) === -1) keys.push(k); });
@@ -240,7 +243,24 @@ function isReservedSheet_(name) {
   return n.indexOf('ezee_') === 0 || RESERVED_SHEETS_.indexOf(n) !== -1;
 }
 
-// CSV / Excel rows. Chunks are ordered and idempotent per importId/chunkIndex.
+// Deletes every data row for which test(row, colIndexByHeader) is true. Reads the sheet once.
+function deleteRowsMatching_(sh, test) {
+  const lastCol = sh.getLastColumn();
+  const last = sh.getLastRow();
+  if (last < 2 || lastCol < 1) return;
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const col = {};
+  headers.forEach(function (h, i) { col[h] = i; });
+  const vals = sh.getRange(2, 1, last - 1, lastCol).getValues();
+  for (let i = vals.length - 1; i >= 0; i--) {
+    if (test(vals[i], col)) sh.deleteRow(i + 2);
+  }
+}
+
+// CSV / Excel rows, sent in chunks. Safe to receive the same chunk twice (retry):
+//  - rows of this file from an earlier send (other send_id) are removed,
+//  - rows of this same chunk are removed before it is written again, so nothing is doubled.
+// Old app versions without sendId keep the previous behaviour (chunk 0 clears the file).
 function appendTable_(b) {
   if (!b || typeof b.importId !== 'string' || !b.importId || !Array.isArray(b.headers) || !Array.isArray(b.rows) || !Number.isInteger(b.chunkIndex) || b.chunkIndex < 0) {
     throw new Error('invalid table chunk');
@@ -249,36 +269,30 @@ function appendTable_(b) {
   if (isReservedSheet_(b.sheetName)) {
     throw new Error('ชื่อแผ่นงาน "' + b.sheetName + '" ใช้โดยแอปอยู่แล้ว ตั้งชื่ออื่น');
   }
-  const cols = b.headers.map(safeKey_);
   const sh = sheet_(b.sheetName);
-  const existingHeaders = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(cols));
-  const idCol = existingHeaders.indexOf('import_id');
-  const chunkCol = existingHeaders.indexOf('chunk_index');
-  const last = sh.getLastRow();
-  if (b.chunkIndex === 0) {
-    deleteRowsWhere_(sh, 'import_id', b.importId);
-  } else if (last > 1) {
-    const ids = sh.getRange(2, idCol + 1, last - 1, 1).getValues();
-    const chunks = sh.getRange(2, chunkCol + 1, last - 1, 1).getValues();
-    let sawImport = false;
-    let highestChunk = -1;
-    for (let i = 0; i < ids.length; i++) {
-      if (String(ids[i][0]) !== String(b.importId)) continue;
-      sawImport = true;
-      const existingChunk = Number(chunks[i][0]);
-      if (existingChunk === b.chunkIndex) return { ok: true, rows: 0, duplicate: true };
-      highestChunk = Math.max(highestChunk, existingChunk);
-    }
-    if (!sawImport || b.chunkIndex !== highestChunk + 1) throw new Error('chunk out of order');
-  } else if (b.chunkIndex > 0) {
-    throw new Error('chunk out of order');
+  const importId = String(b.importId);
+  const sendId = b.sendId ? String(b.sendId) : '';
+  const chunk = String(Number(b.chunkIndex) || 0);
+  const headers = ensureHeaders_(sh, ['import_id', 'send_id', 'chunk_index', 'file_name'].concat(b.headers));
+  if (sendId) {
+    deleteRowsMatching_(sh, function (row, col) {
+      if (String(row[col.import_id]) !== importId) return false;
+      return String(row[col.send_id]) !== sendId || String(row[col.chunk_index]) === chunk;
+    });
+  } else if (chunk === '0') {
+    deleteRowsWhere_(sh, 'import_id', importId);
   }
-  const headers = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(cols));
-  const idx = cols.map(function (h) { return headers.indexOf(h); });
+  const idx = b.headers.map(function (h) { return headers.indexOf(h); });
+  const idCol = headers.indexOf('import_id');
+  const sendCol = headers.indexOf('send_id');
+  const chunkCol = headers.indexOf('chunk_index');
+
   const fileCol = headers.indexOf('file_name');
   const values = b.rows.map(function (r) {
     const out = headers.map(function () { return ''; });
-    out[idCol] = b.importId;
+    out[idCol] = importId;
+    out[sendCol] = sendId;
+    out[chunkCol] = Number(chunk);
     out[fileCol] = b.fileName;
     out[chunkCol] = b.chunkIndex;
     r.forEach(function (v, i) { if (idx[i] >= 0) out[idx[i]] = cell_(v); });
