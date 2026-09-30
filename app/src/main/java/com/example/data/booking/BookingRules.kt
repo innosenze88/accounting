@@ -268,16 +268,20 @@ object BookingRules {
     }
 
     /**
-     * What each wallet can hand over when [yearMonth] is closed: the balance at the end of that month, but never
-     * more than the wallet holds now. Income that arrived after the month (a close done on the 3rd of the next
-     * month) stays in its wallet, and money already moved or spent since is not moved twice.
+     * What each wallet can hand over when [yearMonth] is closed: its balance at the end of that month, minus every
+     * payment out of it since (money leaving a wallet is taken from the oldest money first). Income that arrived
+     * after the month never counts, even when it refilled the wallet after a payment, and money already moved by a
+     * later month close is not moved twice.
      */
     fun monthEndBalances(txns: List<WalletTxnEntity>, yearMonth: String): Map<Long, Double> {
         val lastDay = WalletMath.addDays(WalletMath.nextMonth(yearMonth) + "-01", -1)
-        val atEnd = balances(txns.filter { it.date <= lastDay })
-        val now = balances(txns)
-        return (atEnd.keys + now.keys).associateWith { id ->
-            minOf(atEnd[id] ?: 0.0, now[id] ?: 0.0)
+        val active = txns.filter { it.isActive }
+        val atEnd = balances(active.filter { it.date <= lastDay })
+        val outSince = active.filter { it.date > lastDay && it.amount < 0 }
+            .groupBy { it.walletId }
+            .mapValues { (_, l) -> l.sumOf { WalletMath.toSatang(it.amount) } }
+        return atEnd.mapValues { (id, bal) ->
+            WalletMath.toBaht((WalletMath.toSatang(bal) + (outSince[id] ?: 0L)).coerceAtLeast(0L))
         }
     }
 

@@ -111,6 +111,13 @@ function sheet_(name) {
   return ss.getSheetByName(clean) || ss.insertSheet(clean);
 }
 
+// Column names come from imported files and reports. A name starting with = + - @ would be run by Sheets
+// as a formula when written into the header row, so it gets a leading "_".
+function safeKey_(k) {
+  const t = String(k === undefined || k === null ? '' : k);
+  return /^[=+\-@]/.test(t) ? '_' + t : t;
+}
+
 // Turns plain number text into numbers and stops text from being read as a formula.
 function cell_(v) {
   if (v === undefined || v === null) return '';
@@ -194,10 +201,14 @@ function upsertReport_(r) {
     synced_at: new Date()
   };
   const s = r.summary || {};
-  Object.keys(s).forEach(function (k) { summary[k] = s[k]; });
+  Object.keys(s).forEach(function (k) { summary[safeKey_(k)] = s[k]; });
   upsertRow_(sheet_('eZee_Reports'), summary, 'app_id');
 
-  const rows = r.rows || [];
+  const rows = (r.rows || []).map(function (o) {
+    const safe = {};
+    Object.keys(o).forEach(function (k) { safe[safeKey_(k)] = o[k]; });
+    return safe;
+  });
   const sh = sheet_('eZee_' + (r.report_type || 'other'));
   // Always remove the previous detail rows, including when the new report is empty.
   deleteRowsWhere_(sh, 'app_id', r.app_id);
@@ -238,8 +249,9 @@ function appendTable_(b) {
   if (isReservedSheet_(b.sheetName)) {
     throw new Error('ชื่อแผ่นงาน "' + b.sheetName + '" ใช้โดยแอปอยู่แล้ว ตั้งชื่ออื่น');
   }
+  const cols = b.headers.map(safeKey_);
   const sh = sheet_(b.sheetName);
-  const existingHeaders = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(b.headers));
+  const existingHeaders = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(cols));
   const idCol = existingHeaders.indexOf('import_id');
   const chunkCol = existingHeaders.indexOf('chunk_index');
   const last = sh.getLastRow();
@@ -261,8 +273,8 @@ function appendTable_(b) {
   } else if (b.chunkIndex > 0) {
     throw new Error('chunk out of order');
   }
-  const headers = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(b.headers));
-  const idx = b.headers.map(function (h) { return headers.indexOf(h); });
+  const headers = ensureHeaders_(sh, ['import_id', 'file_name', 'chunk_index'].concat(cols));
+  const idx = cols.map(function (h) { return headers.indexOf(h); });
   const fileCol = headers.indexOf('file_name');
   const values = b.rows.map(function (r) {
     const out = headers.map(function () { return ''; });

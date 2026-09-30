@@ -212,6 +212,32 @@ class BookingRulesTest {
     }
 
     @Test
+    fun monthEndDoesNotMoveNewIncomeThatRefilledASpentWallet() {
+        val salaries = 2L
+        // End of September: 300 left in the salaries wallet.
+        val sep = listOf(
+            com.example.data.booking.WalletTxnEntity(
+                walletId = salaries, amount = 300.0, kind = WalletTxnKind.ALLOCATION.code, date = "2026-09-20",
+                sourceType = com.example.data.booking.TxnSource.EZEE.code
+            )
+        )
+        // October: the 300 is paid out, then October income puts 300 back.
+        val oct = listOf(
+            BookingRules.expense(salaries, 300.0, "2026-10-02", "เงินเดือน", null),
+            com.example.data.booking.WalletTxnEntity(
+                walletId = salaries, amount = 300.0, kind = WalletTxnKind.ALLOCATION.code, date = "2026-10-03",
+                sourceType = com.example.data.booking.TxnSource.EZEE.code
+            )
+        )
+        val left = BookingRules.monthEndBalances(sep + oct, "2026-09")
+        assertEquals(0.0, left[salaries] ?: 0.0, 1e-9)
+        assertTrue(BookingRules.monthEnd(setup, left, "2026-09", "2026-09-30").isEmpty())
+        // Only part of it spent: the rest of September's money still moves.
+        val partly = BookingRules.monthEndBalances(sep + BookingRules.expense(salaries, 100.0, "2026-10-02", "x", null), "2026-09")
+        assertEquals(200.0, partly[salaries] ?: 0.0, 1e-9)
+    }
+
+    @Test
     fun bookingChecks() {
         assertNull(BookingRules.bookingProblem("คุณเอ", "5", "2026-09-30", "2026-10-02", 3000.0))
         assertNotNull(BookingRules.bookingProblem("คุณเอ", "5", "2026-10-02", "2026-09-30", 3000.0))

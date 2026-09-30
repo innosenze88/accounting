@@ -23,6 +23,12 @@ class SheetsClient {
 
         private val RESERVED_SHEETS = setOf("accounting", "voided", "lineinbox")
 
+        /**
+         * A column name from an imported file, made safe for the header row: a name starting with = + - @ would be
+         * run by Google Sheets as a formula, so it gets a leading "_" (the Apps Script does the same).
+         */
+        fun safeHeader(name: String): String = if (name.firstOrNull() in listOf('=', '+', '-', '@')) "_$name" else name
+
         /** True for sheets the app writes itself (Accounting, Voided, LineInbox, eZee_*); imports must not use them. */
         fun isReservedSheet(name: String): Boolean {
             val n = name.trim().lowercase()
@@ -151,7 +157,7 @@ class SheetsClient {
                 put("fileName", fileName)
                 put("sheetName", sheetName)
                 put("chunkIndex", index)
-                put("headers", JSONArray(headers))
+                put("headers", JSONArray(headers.map { safeHeader(it) }))
                 put("rows", JSONArray().apply { chunk.forEach { put(JSONArray(it)) } })
             }
             val result = post(url, token, body)
