@@ -134,7 +134,7 @@ fun FinanceOverviewCard(
                 MaterialTheme.colorScheme.primary, Modifier.weight(1f)
             )
             SmallTile(
-                "ต้องเก็บเพิ่มตอนเช็คเอาท์", o.toCollect,
+                "ลูกค้ายังค้างชำระ", o.toCollect,
                 if (o.toCollectBookings > 0) "${o.toCollectBookings} การจอง • ตอนนี้" else "ไม่มีค้าง",
                 MaterialTheme.colorScheme.tertiary, Modifier.weight(1f)
             )
