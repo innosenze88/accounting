@@ -43,7 +43,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -130,61 +129,68 @@ fun HistoryScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Income
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
                                     .size(20.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFFE8F5E9)),
+                                    .background(MaterialTheme.colorScheme.secondaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     Icons.Default.ArrowDownward,
                                     contentDescription = null,
-                                    tint = Color(0xFF2E7D32),
+                                    tint = MaterialTheme.colorScheme.secondary,
                                     modifier = Modifier.size(12.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("รายรับรวม", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                            Text("รายรับรวม", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
                         }
                         Text(
                             text = String.format("%,.2f ฿", totalIncome),
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32)
+                            color = MaterialTheme.colorScheme.secondary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
 
                     // Expense
-                    Column {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.End
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
                                     .size(20.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFFFFEBEE)),
+                                    .background(MaterialTheme.colorScheme.errorContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     Icons.Default.ArrowUpward,
                                     contentDescription = null,
-                                    tint = Color(0xFFC62828),
+                                    tint = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(12.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("รายจ่ายรวม", fontSize = 11.sp, color = Color(0xFFC62828))
+                            Text("รายจ่ายรวม", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                         }
                         Text(
                             text = String.format("%,.2f ฿", totalExpense),
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFC62828)
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -217,28 +223,28 @@ fun HistoryScreen(
                 FilterChip(
                     selected = selectedFilterType == "RECEIPT",
                     onClick = { selectedFilterType = if (selectedFilterType == "RECEIPT") null else "RECEIPT" },
-                    label = { Text("ใบเสร็จ (RECEIPT)") }
+                    label = { Text("ใบเสร็จ") }
                 )
             }
             item {
                 FilterChip(
                     selected = selectedFilterType == "PAYMENT_VOUCHER",
                     onClick = { selectedFilterType = if (selectedFilterType == "PAYMENT_VOUCHER") null else "PAYMENT_VOUCHER" },
-                    label = { Text("ใบสำคัญจ่าย (VOUCHER)") }
+                    label = { Text("ใบสำคัญจ่าย") }
                 )
             }
             item {
                 FilterChip(
                     selected = selectedFilterType == "UTILITY_BILL",
                     onClick = { selectedFilterType = if (selectedFilterType == "UTILITY_BILL") null else "UTILITY_BILL" },
-                    label = { Text("บิลสาธารณูปโภค (UTILITY)") }
+                    label = { Text("บิลค่าน้ำ/ไฟ") }
                 )
             }
             item {
                 FilterChip(
                     selected = selectedFilterType == "ADVANCE_DEPOSIT",
                     onClick = { selectedFilterType = if (selectedFilterType == "ADVANCE_DEPOSIT") null else "ADVANCE_DEPOSIT" },
-                    label = { Text("มัดจำล่วงหน้า (DEPOSIT)") }
+                    label = { Text("มัดจำล่วงหน้า") }
                 )
             }
         }
@@ -484,8 +490,8 @@ private fun HistoryItemCard(
                     textDecoration = if (voided) TextDecoration.LineThrough else null,
                     color = when {
                         voided -> MaterialTheme.colorScheme.onSurfaceVariant
-                        isIncome -> Color(0xFF2E7D32)
-                        else -> Color(0xFFC62828)
+                        isIncome -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.error
                     }
                 )
             }

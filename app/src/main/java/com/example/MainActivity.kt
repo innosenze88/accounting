@@ -9,19 +9,26 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -33,12 +40,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.HistoryScreen
@@ -105,7 +113,8 @@ fun MainAppScreen(
     sharedUris: List<Uri> = emptyList(),
     onSharedUrisHandled: () -> Unit = {}
 ) {
-    var currentTab by remember { mutableIntStateOf(0) }
+    var currentTab by rememberSaveable { mutableIntStateOf(0) }
+    var showMoreSheet by rememberSaveable { mutableStateOf(false) }
 
     // A file shared from Gmail/Files: read it and open the Import tab.
     LaunchedEffect(sharedUri) {
@@ -134,12 +143,12 @@ fun MainAppScreen(
                 title = {
                     Text(
                         text = when (currentTab) {
-                            0 -> "แดชบอร์ดสรุปผลบัญชี"
-                            1 -> "AI Accountant OCR"
-                            2 -> "ประวัติเอกสารบัญชี"
-                            3 -> "นำเข้าไฟล์ (PDF / CSV / Excel)"
-                            5 -> "จองตรง & กระเป๋าเงิน"
-                            else -> "ตั้งค่า & อัปเดต"
+                            0 -> "ภาพรวม"
+                            1 -> "สแกนเอกสาร"
+                            2 -> "ประวัติ"
+                            3 -> "นำเข้าไฟล์"
+                            5 -> "การจองและกระเป๋า"
+                            else -> "ตั้งค่า"
                         },
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
@@ -158,44 +167,37 @@ fun MainAppScreen(
                 NavigationBarItem(
                     selected = currentTab == 0,
                     onClick = { currentTab = 0 },
-                    icon = { Icon(Icons.Default.Dashboard, contentDescription = "แดชบอร์ด") },
-                    label = { Text("แดชบอร์ด", fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.Dashboard, contentDescription = null) },
+                    label = { Text("ภาพรวม") },
                     modifier = Modifier.testTag("nav_item_dashboard")
                 )
                 NavigationBarItem(
                     selected = currentTab == 5,
                     onClick = { currentTab = 5 },
-                    icon = { Icon(Icons.Default.Hotel, contentDescription = "จอง/กระเป๋า") },
-                    label = { Text("จอง", fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.Hotel, contentDescription = null) },
+                    label = { Text("จอง") },
                     modifier = Modifier.testTag("nav_item_booking")
                 )
                 NavigationBarItem(
                     selected = currentTab == 1,
                     onClick = { currentTab = 1 },
-                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "สแกน") },
-                    label = { Text("สแกน", fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                    label = { Text("สแกน") },
                     modifier = Modifier.testTag("nav_item_scan")
                 )
                 NavigationBarItem(
                     selected = currentTab == 2,
                     onClick = { currentTab = 2 },
-                    icon = { Icon(Icons.Default.History, contentDescription = "ประวัติ") },
-                    label = { Text("ประวัติ", fontSize = 11.sp) },
+                    icon = { Icon(Icons.Default.History, contentDescription = null) },
+                    label = { Text("ประวัติ") },
                     modifier = Modifier.testTag("nav_item_history")
                 )
                 NavigationBarItem(
-                    selected = currentTab == 3,
-                    onClick = { currentTab = 3 },
-                    icon = { Icon(Icons.Default.UploadFile, contentDescription = "นำเข้าไฟล์") },
-                    label = { Text("นำเข้า", fontSize = 11.sp) },
-                    modifier = Modifier.testTag("nav_item_rules")
-                )
-                NavigationBarItem(
-                    selected = currentTab == 4,
-                    onClick = { currentTab = 4 },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "ตั้งค่า") },
-                    label = { Text("ตั้งค่า", fontSize = 11.sp) },
-                    modifier = Modifier.testTag("nav_item_settings")
+                    selected = showMoreSheet || currentTab == 3 || currentTab == 4,
+                    onClick = { showMoreSheet = true },
+                    icon = { Icon(Icons.Default.MoreHoriz, contentDescription = null) },
+                    label = { Text("อื่น ๆ") },
+                    modifier = Modifier.testTag("nav_item_more")
                 )
             }
         }
@@ -218,6 +220,47 @@ fun MainAppScreen(
                 3 -> ImportScreen(viewModel = viewModel, onGoToScanner = { currentTab = 1 })
                 4 -> SettingsScreen(viewModel = viewModel)
                 5 -> BookingScreen(composeViewModel<BookingViewModel>())
+            }
+        }
+    }
+
+    if (showMoreSheet) {
+        ModalBottomSheet(onDismissRequest = { showMoreSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 20.dp)
+            ) {
+                Text(
+                    text = "เมนูเพิ่มเติม",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+                ListItem(
+                    headlineContent = { Text("นำเข้าไฟล์") },
+                    supportingContent = { Text("นำเข้า PDF, รูปภาพ, CSV หรือ Excel") },
+                    leadingContent = { Icon(Icons.Default.UploadFile, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            currentTab = 3
+                            showMoreSheet = false
+                        }
+                        .testTag("more_import")
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+                ListItem(
+                    headlineContent = { Text("ตั้งค่า") },
+                    supportingContent = { Text("ตั้งค่า AI, Google Sheets และการสำรองข้อมูล") },
+                    leadingContent = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            currentTab = 4
+                            showMoreSheet = false
+                        }
+                        .testTag("more_settings")
+                )
             }
         }
     }

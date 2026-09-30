@@ -48,7 +48,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -168,13 +167,13 @@ fun SettingsScreen(
         }
 
         if (savedNotice && !isDirty) {
-            Text("✓ บันทึกแล้ว", color = Color(0xFF2E7D32), fontSize = 13.sp)
+            Text("✓ บันทึกแล้ว", color = MaterialTheme.colorScheme.secondary, fontSize = 13.sp)
         }
         testMessage?.let { msg ->
             Text(
                 msg,
                 fontSize = 13.sp,
-                color = if (msg.startsWith("✓")) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                color = if (msg.startsWith("✓")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
             )
         }
 
@@ -279,7 +278,7 @@ fun SettingsScreen(
                     Text(
                         msg,
                         fontSize = 13.sp,
-                        color = if (msg.startsWith("✓")) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                        color = if (msg.startsWith("✓")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
                     )
                 }
                 Text(

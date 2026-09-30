@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -111,6 +112,7 @@ fun ImportScreen(
     val templates by viewModel.reportTemplates.collectAsStateWithLifecycle()
     val builder by viewModel.builder.collectAsStateWithLifecycle()
     var showRules by rememberSaveable { mutableStateOf(false) }
+    var showImportHelp by rememberSaveable { mutableStateOf(false) }
 
     // Several files can be selected at once (long-press to select more in the file picker).
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -136,43 +138,61 @@ fun ImportScreen(
     ) {
         Card(
             shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
         ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("นำเข้าไฟล์จากอีเมล / เครื่อง", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("เลือกเอกสารที่จะนำเข้า", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "• กดปุ่มด้านล่างเพื่อเลือกไฟล์ — เลือกได้หลายไฟล์พร้อมกัน (กดค้างที่ไฟล์แรก แล้วแตะไฟล์อื่นเพิ่ม)\n" +
-                        "• ใน Gmail เปิดไฟล์แนบ → แชร์ (Share) → เลือกแอปนี้\n" +
-                        "รองรับ: PDF (สลิป/ใบเสร็จ/รายงาน eZee), รูปภาพ, CSV, Excel (.xlsx)\n" +
-                        "เลือกหลายไฟล์: PDF/รูป = อ่านเป็นสลิป/ใบเสร็จอัตโนมัติ, CSV/Excel = บันทึกเป็นตาราง",
-                    fontSize = 12.sp
+                    "เลือก PDF รูปภาพ CSV หรือ Excel ได้หลายไฟล์พร้อมกัน",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(
                     onClick = { picker.launch(PICKER_TYPES) },
                     enabled = !busy,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(48.dp)
                         .testTag("import_pick_button")
                 ) {
                     Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("เลือกไฟล์ (ได้หลายไฟล์)")
+                    Text("เลือกไฟล์จากเครื่อง")
                 }
                 OutlinedButton(
                     onClick = { viewModel.pullLineSlips() },
                     enabled = !busy,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(48.dp)
                         .testTag("import_line_button")
                 ) {
-                    Text("ดึงสลิปจาก LINE (ที่ส่งเข้า LINE OA ของรีสอร์ท)")
+                    Text("ดึงสลิปจาก LINE OA")
                 }
                 Text(
-                    "ยอดในแดชบอร์ดนับเฉพาะสลิป/ใบเสร็จที่กด \"ยืนยัน\" แล้ว และรายงาน eZee ที่เลือก \"นับเข้ายอด\" ตอนบันทึก — ตาราง CSV/Excel ไม่นับรวมในยอด",
-                    fontSize = 11.sp,
-                    color = Color(0xFFE65100)
+                    "สำหรับสลิปที่ส่งเข้า LINE OA ของรีสอร์ท",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(
+                    onClick = { showImportHelp = !showImportHelp },
+                    modifier = Modifier.testTag("toggle_import_help")
+                ) {
+                    Text(if (showImportHelp) "ซ่อนวิธีนำเข้า" else "วิธีนำเข้าไฟล์")
+                }
+                AnimatedVisibility(visible = showImportHelp) {
+                    Text(
+                        "ใน Gmail ให้เปิดไฟล์แนบแล้วเลือกแชร์มายังแอปนี้ • PDF และรูปภาพจะนำเข้าเป็นเอกสารให้ตรวจสอบ • CSV และ Excel จะนำเข้าเป็นตาราง",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    "ยอดในภาพรวมรวมเฉพาะเอกสารที่ยืนยันแล้ว และรายงาน eZee ที่เลือกให้นับยอด ตาราง CSV/Excel ไม่นับรวม",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary
                 )
             }
         }
