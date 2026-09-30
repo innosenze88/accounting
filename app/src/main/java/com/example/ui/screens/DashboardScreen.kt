@@ -107,6 +107,9 @@ fun DashboardScreen(
         allDocuments.count { it.sampleId == null && it.documentStatus() == DocumentStatus.PENDING }
     }
     var selectedEntityForDetail by remember { mutableStateOf<ExtractedDocumentEntity?>(null) }
+    // Figures from scanned documents only (tax, document types) are details, folded away by default
+    // so the page shows one set of totals.
+    var showDocDetails by rememberSaveable { mutableStateOf(false) }
 
     // Statistical Calculations
     val totalIncome = remember(historyList) {
@@ -208,49 +211,18 @@ fun DashboardScreen(
         }
 
         item {
-            // Dashboard Title Banner
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "แดชบอร์ดสรุปผลบัญชี",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "ช่วงเวลา: ${ReportPeriod.label(period, today)} • ตามวันที่บนเอกสาร",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.testTag("dashboard_total_docs_badge")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Dashboard,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "${historyList.size} เอกสาร",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
+            Column {
+                Text(
+                    text = "ยอดเงิน",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = ReportPeriod.label(period, today),
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -274,39 +246,6 @@ fun DashboardScreen(
         }
 
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = onNavigateToScan,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .testTag("dashboard_btn_quick_scan"),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("สแกนเอกสาร", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                OutlinedButton(
-                    onClick = onNavigateToHistory,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .testTag("dashboard_btn_all_history"),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("ดูประวัติ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-
-        item {
             BackupReminder(vm = composeViewModel<BackupViewModel>(), onOpenSettings = onNavigateToSettings)
         }
 
@@ -321,11 +260,27 @@ fun DashboardScreen(
         }
 
         item {
+            OutlinedButton(
+                onClick = { showDocDetails = !showDocDetails },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("dashboard_doc_details_toggle"),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    if (showDocDetails) "ซ่อนรายละเอียดจากเอกสารที่สแกน"
+                    else "ดูรายละเอียดจากเอกสารที่สแกน (ภาษี, ประเภทเอกสาร)",
+                    fontSize = 13.sp
+                )
+            }
+        }
+
+        if (showDocDetails) {
+        item {
             Text(
-                text = "เฉพาะเอกสารที่สแกนและยืนยันแล้ว (ไม่รวมยอดจองและกระเป๋าเงิน)",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp)
+                text = "ตัวเลขชุดนี้นับเฉพาะเอกสารที่สแกนและยืนยันแล้ว ไม่รวมยอดจองและรายได้ eZee จึงไม่เท่ากับยอดด้านบน",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
@@ -649,6 +604,8 @@ fun DashboardScreen(
                     }
                 }
             }
+        }
+
         }
 
         // Recent Scanned Documents Section
