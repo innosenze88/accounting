@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.components.appCardBorder
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -170,7 +171,8 @@ fun ScannerScreen(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
-            )
+            ),
+            border = appCardBorder()
         ) {
             Row(
                 modifier = Modifier.padding(16.dp),
@@ -305,7 +307,8 @@ fun ScannerScreen(
                     .height(280.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                border = appCardBorder()
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     Image(
@@ -384,7 +387,8 @@ fun ScannerScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(16.dp),
+                border = appCardBorder()
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
@@ -434,7 +438,8 @@ fun ScannerScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    border = appCardBorder()
                 ) {
                     Text(
                         text = "ผลจากเอกสารตัวอย่าง ใช้ทดสอบเท่านั้น — ไม่ถูกบันทึกและไม่นับในยอดบัญชี",

@@ -123,8 +123,9 @@ fun DuplicateWarningCard(duplicate: ExtractedDocumentEntity, modifier: Modifier 
         modifier = modifier
             .fillMaxWidth()
             .testTag("duplicate_warning"),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+        border = appCardBorder()
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
@@ -151,8 +152,9 @@ fun VoidedInfoCard(entity: ExtractedDocumentEntity, modifier: Modifier = Modifie
     }
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFECEFF1))
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFECEFF1)),
+        border = appCardBorder()
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("ยกเลิกรายการแล้ว — ไม่นับในยอด", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF37474F))

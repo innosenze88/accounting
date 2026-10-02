@@ -120,7 +120,7 @@ fun FinanceOverviewCard(
             Modifier.fillMaxWidth(),
             featured = true
         )
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), border = appCardBorder()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("ที่มาของรายรับ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 Line("จองตรง (เช็คเอาท์ / ชำระ / มัดจำที่ไม่คืน)", o.incomeBookings)
@@ -151,7 +151,7 @@ fun FinanceOverviewCard(
         }
 
         // (5) wallets
-        Card(Modifier.fillMaxWidth().clickable(onClick = onOpenWallets), shape = RoundedCornerShape(14.dp)) {
+        Card(Modifier.fillMaxWidth().clickable(onClick = onOpenWallets), shape = RoundedCornerShape(16.dp), border = appCardBorder()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("กระเป๋าเงิน ${o.wallets.size} ใบ (MAKE)", fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -197,8 +197,9 @@ private fun YearPlanCard(plan: YearPlan?) {
     var detail by remember { mutableStateOf(false) }
     Card(
         Modifier.fillMaxWidth().testTag("year_plan_card"),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        border = appCardBorder()
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (plan == null) {
@@ -278,7 +279,7 @@ private fun BigTile(
     modifier: Modifier,
     featured: Boolean = false
 ) {
-    Card(modifier, shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = bg)) {
+    Card(modifier, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bg), border = appCardBorder()) {
         Column(Modifier.padding(if (featured) 14.dp else 12.dp)) {
             Text(title, fontSize = 12.sp, color = accent, fontWeight = FontWeight.SemiBold)
             Text(
@@ -295,7 +296,7 @@ private fun BigTile(
 
 @Composable
 private fun SmallTile(title: String, amount: Double, sub: String, accent: Color, modifier: Modifier) {
-    Card(modifier, shape = RoundedCornerShape(14.dp)) {
+    Card(modifier, shape = RoundedCornerShape(16.dp), border = appCardBorder()) {
         Column(Modifier.padding(10.dp)) {
             Text(title, fontSize = 12.sp, color = accent, fontWeight = FontWeight.SemiBold)
             Text("${baht(amount)} ฿", fontSize = 16.sp, fontWeight = FontWeight.Bold)

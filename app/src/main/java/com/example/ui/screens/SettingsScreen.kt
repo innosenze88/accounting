@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.components.appCardBorder
 import com.example.ui.components.BackupCard
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import android.content.ClipData
@@ -183,9 +184,10 @@ fun SettingsScreen(
         Text("Google Sheets", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            border = appCardBorder()
         ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
@@ -291,7 +293,8 @@ fun SettingsScreen(
 
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(16.dp),
+            border = appCardBorder()
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("เรื่องความปลอดภัย", fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -328,9 +331,10 @@ private fun ProviderCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = appCardBorder()
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp)

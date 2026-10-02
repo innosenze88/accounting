@@ -61,3 +61,7 @@ fun SectionTitle(
         trailing?.invoke()
     }
 }
+
+/** Thin outline used on every card so cards stand out on the grey page, as in the web app. */
+@Composable
+fun appCardBorder(color: Color = MaterialTheme.colorScheme.outlineVariant): BorderStroke = BorderStroke(1.dp, color)

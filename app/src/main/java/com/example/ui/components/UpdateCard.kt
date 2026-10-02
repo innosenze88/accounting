@@ -47,7 +47,7 @@ fun UpdateCard(viewModel: AccountantViewModel) {
         if (state is UpdateState.ReadyToInstall && viewModel.canInstallUpdates()) viewModel.installUpdate()
     }
 
-    Card(modifier = Modifier.fillMaxWidth().testTag("update_card"), shape = RoundedCornerShape(12.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().testTag("update_card"), shape = RoundedCornerShape(16.dp), border = appCardBorder()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(20.dp))

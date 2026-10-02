@@ -60,7 +60,7 @@ fun BackupCard(vm: BackupViewModel) {
     }
     var editPassword by remember { mutableStateOf(false) }
 
-    Card(modifier = Modifier.fillMaxWidth().testTag("backup_card"), shape = RoundedCornerShape(12.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().testTag("backup_card"), shape = RoundedCornerShape(16.dp), border = appCardBorder()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Backup, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -228,7 +228,8 @@ fun BackupReminder(vm: BackupViewModel, onOpenSettings: () -> Unit) {
     if (days != null && days < 7) return
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenSettings).testTag("backup_reminder"),
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(16.dp),
+        border = appCardBorder()
     ) {
         Column(Modifier.padding(14.dp)) {
             Text(
