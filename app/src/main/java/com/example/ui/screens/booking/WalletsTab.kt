@@ -66,7 +66,7 @@ internal fun WalletsTab(vm: BookingViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         advance?.let { a ->
@@ -87,7 +87,12 @@ internal fun WalletsTab(vm: BookingViewModel) {
         if (pending.isNotEmpty()) {
             item { SectionTitle("ต้องโอนใน MAKE (${pending.size} กระเป๋า)") }
             item {
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFFFF3E0))) {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(17.dp),
+                    border = cardBorder(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.25f)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("โอนตามนี้ในแอป MAKE แล้วกด \"โอนแล้ว\" ทีละกระเป๋า", fontSize = 12.sp)
                         pending.forEach { w ->
@@ -176,7 +181,7 @@ internal fun WalletsTab(vm: BookingViewModel) {
 @Composable
 private fun WalletRow(w: WalletView) {
     val target = w.wallet.monthlyTarget?.takeIf { it > 0 }
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), border = cardBorder()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(w.wallet.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
