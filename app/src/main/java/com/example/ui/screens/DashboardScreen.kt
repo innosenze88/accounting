@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.components.appCardBorder
 import com.example.ui.components.BackupReminder
 import com.example.ui.components.FinanceOverviewCard
 import com.example.ui.viewmodel.BookingViewModel
@@ -180,8 +181,9 @@ fun DashboardScreen(
                         .fillMaxWidth()
                         .clickable(onClick = onNavigateToHistory)
                         .testTag("dashboard_pending_banner"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    border = appCardBorder()
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
@@ -303,7 +305,8 @@ fun DashboardScreen(
                     .fillMaxWidth()
                     .testTag("dashboard_net_balance_card"),
                 shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = netBg)
+                colors = CardDefaults.cardColors(containerColor = netBg),
+                border = appCardBorder()
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Row(
@@ -384,7 +387,8 @@ fun DashboardScreen(
                     .fillMaxWidth()
                     .testTag("dashboard_ratio_card"),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = appCardBorder()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -476,7 +480,8 @@ fun DashboardScreen(
                     .fillMaxWidth()
                     .testTag("dashboard_type_breakdown_card"),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = appCardBorder()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -524,7 +529,8 @@ fun DashboardScreen(
                     .fillMaxWidth()
                     .testTag("dashboard_tax_compliance_card"),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                border = appCardBorder()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -636,7 +642,8 @@ fun DashboardScreen(
                         .fillMaxWidth()
                         .testTag("dashboard_empty_state_card"),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                    border = appCardBorder()
                 ) {
                     Column(
                         modifier = Modifier
@@ -770,8 +777,9 @@ private fun StatMetricCard(
 ) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        border = appCardBorder()
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -913,8 +921,9 @@ private fun RecentDocumentCard(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag("dashboard_recent_item_${entity.id}"),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = appCardBorder()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(

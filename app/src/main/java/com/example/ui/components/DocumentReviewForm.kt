@@ -123,8 +123,9 @@ fun DocumentReviewForm(
         modifier = modifier
             .fillMaxWidth()
             .testTag("review_form"),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+        border = appCardBorder()
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

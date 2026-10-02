@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.components.appCardBorder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -117,7 +118,8 @@ fun HistoryScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+            border = appCardBorder()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
@@ -409,9 +411,10 @@ private fun HistoryItemCard(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag("history_item_${entity.id}"),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = appCardBorder()
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(

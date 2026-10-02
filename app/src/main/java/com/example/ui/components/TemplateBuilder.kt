@@ -357,7 +357,7 @@ private fun SetupCard(
     onDateAnchor: (String) -> Unit,
     foundDate: String?
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(12.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(16.dp), border = appCardBorder()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = name, onValueChange = onName, label = { Text("ชื่อตัวอ่าน") },
@@ -461,8 +461,9 @@ private fun ResultCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(12.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        border = appCardBorder()
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("ผลทดลองอ่าน", fontWeight = FontWeight.Bold)
@@ -537,7 +538,7 @@ fun TemplateListCard(
     var showImport by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
 
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), border = appCardBorder()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("ตัวอ่านที่สร้างเอง (${templates.size})", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Text(
