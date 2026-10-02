@@ -7,9 +7,18 @@ import androidx.core.content.IntentCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,8 +26,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Hotel
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -27,6 +37,7 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -43,7 +54,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -59,6 +73,9 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.booking.BookingScreen
 import com.example.ui.viewmodel.BookingViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import com.example.ui.theme.HeaderLabel
+import com.example.ui.theme.HeaderNavy
+import com.example.ui.theme.HeaderNavyNight
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AccountantViewModel
 
@@ -72,7 +89,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The header is always navy, so the status bar icons stay light in both themes.
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         if (savedInstanceState == null) handleIncomingIntent(intent)
         setContent {
             MyApplicationTheme {
@@ -148,30 +166,62 @@ fun MainAppScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    if (currentTab != 6) {
+                        IconButton(onClick = { currentTab = 6 }, modifier = Modifier.testTag("top_back_home")) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "กลับหน้าแรก")
+                        }
+                    }
+                },
                 title = {
-                    Text(
-                        text = when (currentTab) {
-                            6 -> "หน้าแรก"
-                            0 -> "ดูยอดเงิน"
-                            1 -> "สแกนเอกสาร"
-                            2 -> "ประวัติ"
-                            3 -> "นำเข้าไฟล์"
-                            5 -> "การจองและกระเป๋า"
-                            else -> "ตั้งค่า"
-                        },
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("A", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB9D6C6))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("บัญชีโรงแรม", fontSize = 11.sp, lineHeight = 16.sp, color = HeaderLabel)
+                            Text(
+                                text = when (currentTab) {
+                                    6 -> "หน้าแรก"
+                                    0 -> "ดูยอดเงิน"
+                                    1 -> "สแกนบิล / สลิป"
+                                    2 -> "ประวัติเอกสาร"
+                                    3 -> "นำเข้าไฟล์"
+                                    5 -> when (bookingTab) {
+                                        1 -> "จ่ายเงิน"
+                                        2 -> "ปิดยอดวันนี้"
+                                        3 -> "ออกเอกสาร"
+                                        else -> "การจอง"
+                                    }
+                                    else -> "ตั้งค่า"
+                                },
+                                fontSize = 18.sp,
+                                lineHeight = 24.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = if (isSystemInDarkTheme()) HeaderNavyNight else HeaderNavy,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White.copy(alpha = 0.8f)
                 )
             )
         },
         bottomBar = {
             NavigationBar(
-                modifier = Modifier.testTag("bottom_nav_bar")
+                modifier = Modifier.testTag("bottom_nav_bar"),
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp
             ) {
                 NavigationBarItem(
                     selected = currentTab == 6 || currentTab == 0,
@@ -183,14 +233,14 @@ fun MainAppScreen(
                 NavigationBarItem(
                     selected = currentTab == 5,
                     onClick = { currentTab = 5 },
-                    icon = { Icon(Icons.Default.Hotel, contentDescription = null) },
+                    icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
                     label = { Text("จอง") },
                     modifier = Modifier.testTag("nav_item_booking")
                 )
                 NavigationBarItem(
                     selected = currentTab == 1,
                     onClick = { currentTab = 1 },
-                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                    icon = { Icon(Icons.Default.DocumentScanner, contentDescription = null) },
                     label = { Text("สแกน") },
                     modifier = Modifier.testTag("nav_item_scan")
                 )
