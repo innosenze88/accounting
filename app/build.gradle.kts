@@ -17,8 +17,8 @@ android {
     minSdk = 24
     targetSdk = 36
     // In-app update: every new GitHub Release needs a HIGHER versionCode and a matching tag "v<versionName>".
-    versionCode = 6
-    versionName = "1.4.1"
+    versionCode = 7
+    versionName = "1.5.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
