@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -75,11 +76,15 @@ internal fun BookingsTab(vm: BookingViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            Button(onClick = { creating = true }, modifier = Modifier.fillMaxWidth().testTag("new_booking_button")) {
+            Button(
+                onClick = { creating = true },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("new_booking_button")
+            ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text("รับจองใหม่ (จองตรงกับรีสอร์ท)")
@@ -122,20 +127,25 @@ internal fun BookingsTab(vm: BookingViewModel) {
 private fun BookingRow(v: BookingView, onClick: () -> Unit) {
     val b = v.booking
     val status = b.bookingStatus
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(12.dp)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(17.dp), border = cardBorder()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("ห้อง ${b.roomNo}  •  ${b.guestName}", fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Text(
-                    status.titleTh, fontSize = 12.sp,
-                    color = when (status) {
-                        BookingStatus.CHECKED_IN -> Green
-                        BookingStatus.CANCELLED -> MaterialTheme.colorScheme.error
-                        else -> MaterialTheme.colorScheme.primary
+                Text("ห้อง ${b.roomNo}  •  ${b.guestName}", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                StatusPill(
+                    status.titleTh,
+                    when (status) {
+                        BookingStatus.CHECKED_IN -> PillTone.GREEN
+                        BookingStatus.CANCELLED -> PillTone.RED
+                        BookingStatus.CHECKED_OUT -> PillTone.GREY
+                        else -> PillTone.BLUE
                     }
                 )
             }
-            Text("${ThaiDate.short(b.checkIn)} – ${ThaiDate.short(b.checkOut)} (${WalletMath.nights(b.checkIn, b.checkOut) ?: 0} คืน)", fontSize = 13.sp)
+            Text(
+                "${ThaiDate.short(b.checkIn)} – ${ThaiDate.short(b.checkOut)} (${WalletMath.nights(b.checkIn, b.checkOut) ?: 0} คืน)",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Row {
                 Text("ยอด ${baht(v.money.total)}  •  มัดจำ ${baht(v.money.deposits)}", fontSize = 12.sp, modifier = Modifier.weight(1f))
                 if (status != BookingStatus.CANCELLED && v.money.due > 0)

@@ -71,12 +71,12 @@ internal fun DayCloseTab(vm: BookingViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item { DateField("วันที่ปิดยอด", date, { date = it }, Modifier.fillMaxWidth()) }
         if (closed != null) item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), border = cardBorder()) {
                 Column(Modifier.padding(12.dp)) {
                     Text("✓ ปิดยอดวันนี้แล้ว", color = Green, fontWeight = FontWeight.Bold)
                     Text("รายได้ eZee ${baht(closed.ezeeIncome)} บาท", fontSize = 13.sp)
@@ -89,7 +89,7 @@ internal fun DayCloseTab(vm: BookingViewModel) {
             }
         } else {
             item {
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), border = cardBorder()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("1. ห้องจองตรงที่ออกวันนี้", fontWeight = FontWeight.Bold)
                         Text(
@@ -209,11 +209,11 @@ internal fun DocumentsTab(vm: BookingViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), border = cardBorder()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("ข้อมูลรีสอร์ท (หัวเอกสาร)", fontWeight = FontWeight.Bold)
                     Text(business.name.ifBlank { "ยังไม่ได้ตั้งค่า" }, fontSize = 13.sp)
@@ -226,7 +226,7 @@ internal fun DocumentsTab(vm: BookingViewModel) {
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), border = cardBorder()) {
                 Column(Modifier.padding(12.dp)) {
                     Text("ทะเบียนผู้พักรายเดือน (จองตรง)", fontWeight = FontWeight.Bold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -248,7 +248,7 @@ internal fun DocumentsTab(vm: BookingViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(shown, key = { it.id }) { d ->
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), border = cardBorder()) {
                 Column(Modifier.padding(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {

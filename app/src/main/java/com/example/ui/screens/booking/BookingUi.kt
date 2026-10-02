@@ -1,7 +1,9 @@
 package com.example.ui.screens.booking
 
 import android.app.DatePickerDialog
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -43,6 +47,11 @@ import androidx.compose.ui.unit.sp
 import com.example.data.docs.ThaiDate
 import com.example.data.payment.QrImage
 import com.example.data.wallet.WalletMath
+import com.example.ui.theme.SageGreenText
+import com.example.ui.theme.ToneAmber
+import com.example.ui.theme.ToneAmberFill
+import com.example.ui.theme.ToneBlue
+import com.example.ui.theme.ToneBlueFill
 import java.util.Locale
 
 /** 1,234.50 */
@@ -53,8 +62,12 @@ internal fun parseMoney(s: String): Double? = s.replace(",", "").trim().toDouble
 
 internal fun previousMonth(ym: String): String = WalletMath.addDays("$ym-01", -1).take(7)
 
-internal val Green = Color(0xFF2E7D32)
-internal val Orange = Color(0xFFE65100)
+internal val Green = SageGreenText
+internal val Orange = ToneAmber
+
+/** Thin border used on every card, as in the web app. */
+@Composable
+internal fun cardBorder(color: Color = MaterialTheme.colorScheme.outlineVariant) = BorderStroke(1.dp, color)
 
 /** Date field that opens the Android date picker. Value is yyyy-MM-dd. */
 @Composable
@@ -72,15 +85,16 @@ internal fun DateField(label: String, value: String, onChange: (String) -> Unit,
     }
     Card(
         modifier = modifier.clickable { open() },
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(12.dp),
+        border = cardBorder(MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(if (WalletMath.isIsoDate(value)) ThaiDate.long(value) else "แตะเพื่อเลือกวันที่", fontSize = 14.sp)
             }
-            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -94,6 +108,7 @@ internal fun MoneyField(label: String, value: String, onChange: (String) -> Unit
         singleLine = true,
         suffix = { Text("บาท") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        shape = RoundedCornerShape(12.dp),
         modifier = modifier
     )
 }
@@ -106,6 +121,7 @@ internal fun TextInput(label: String, value: String, onChange: (String) -> Unit,
         label = { Text(label) },
         singleLine = true,
         keyboardOptions = if (number) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
+        shape = RoundedCornerShape(12.dp),
         modifier = modifier
     )
 }
@@ -115,7 +131,16 @@ internal fun TextInput(label: String, value: String, onChange: (String) -> Unit,
 internal fun <T> ChoiceChips(options: List<T>, selected: T?, label: (T) -> String, onSelect: (T) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         options.forEach { o ->
-            FilterChip(selected = o == selected, onClick = { onSelect(o) }, label = { Text(label(o)) })
+            FilterChip(
+                selected = o == selected,
+                onClick = { onSelect(o) },
+                label = { Text(label(o)) },
+                shape = RoundedCornerShape(10.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            )
         }
     }
 }
@@ -127,13 +152,15 @@ internal fun MessageBanner(message: String?, onClose: () -> Unit) {
     val error = message.startsWith("✕")
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        border = cardBorder(if (error) MaterialTheme.colorScheme.error.copy(alpha = 0.3f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
         colors = CardDefaults.cardColors(
-            containerColor = if (error) MaterialTheme.colorScheme.errorContainer else Color(0xFFE8F5E9)
+            containerColor = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
         )
     ) {
-        Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(message, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-                color = if (error) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF1B5E20))
+                color = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer)
             IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = "ปิด") }
         }
     }
@@ -141,7 +168,13 @@ internal fun MessageBanner(message: String?, onClose: () -> Unit) {
 
 @Composable
 internal fun SectionTitle(text: String) {
-    Text(text, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(top = 4.dp))
+    Text(
+        text,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 15.sp,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier.padding(top = 8.dp, start = 2.dp)
+    )
 }
 
 /** PromptPay QR for the guest to scan. */
@@ -182,5 +215,29 @@ internal fun ReasonDialog(title: String, warning: String, confirmText: String, o
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("ไม่ใช่") } }
+    )
+}
+
+internal enum class PillTone { GREEN, BLUE, AMBER, RED, GREY }
+
+/** Small rounded status label, e.g. "เช็คอินแล้ว". */
+@Composable
+internal fun StatusPill(text: String, tone: PillTone) {
+    val (fill, ink) = when (tone) {
+        PillTone.GREEN -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.primary
+        PillTone.BLUE -> ToneBlueFill to ToneBlue
+        PillTone.AMBER -> ToneAmberFill to ToneAmber
+        PillTone.RED -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.error
+        PillTone.GREY -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(
+        text,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = ink,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(fill)
+            .padding(horizontal = 9.dp, vertical = 3.dp)
     )
 }
