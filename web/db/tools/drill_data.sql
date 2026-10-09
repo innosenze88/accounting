@@ -21,7 +21,7 @@ INSERT INTO imported_files (property_id, source_system, report_type, bank_accoun
                             sha256, storage_key, report_date_from, report_date_to, status, totals_match, committed_by, committed_at)
 SELECT test.prop(), v.src, v.typ, test.bank(v.bank), v.typ || '.xlsx', 'text/csv', 100, repeat(v.sha, 64), 'imports/drill/' || v.sha,
        '2026-02-01', '2026-02-28', 'COMMITTED', true, test.usr('accountant'), now()
-FROM (VALUES ('HOTELRUNNER', 'NIGHT_AUDIT', NULL, '1'), ('BANK', 'BANK_STATEMENT', 'KBank operating', '2'),
+FROM (VALUES ('EZEE', 'NIGHT_AUDIT', NULL, '1'), ('BANK', 'BANK_STATEMENT', 'KBank operating', '2'),
              ('BANK', 'BANK_STATEMENT', 'Capital fund', '3')) v(src, typ, bank, sha);
 INSERT INTO balance_confirmations (property_id, bank_account_id, as_of_date, confirmed_balance, method, imported_file_id, counted_by,
                                    status, verified_by, verified_at)

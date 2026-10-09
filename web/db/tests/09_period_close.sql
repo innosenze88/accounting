@@ -17,7 +17,7 @@ CREATE FUNCTION pg_temp.close_feb() RETURNS void LANGUAGE sql AS $$
 CREATE FUNCTION pg_temp.import_file(p_type text, p_bank text, p_sha text) RETURNS bigint LANGUAGE sql AS $$
     INSERT INTO imported_files (property_id, source_system, report_type, bank_account_id, original_filename, mime_type, size_bytes,
                                 sha256, storage_key, report_date_from, report_date_to, status, totals_match, committed_by, committed_at)
-    VALUES (test.prop(), CASE WHEN p_type = 'BANK_STATEMENT' THEN 'BANK' ELSE 'HOTELRUNNER' END, p_type, test.bank(p_bank),
+    VALUES (test.prop(), CASE WHEN p_type = 'BANK_STATEMENT' THEN 'BANK' ELSE 'EZEE' END, p_type, test.bank(p_bank),
             p_type || '.xlsx', 'text/csv', 100, repeat(p_sha, 64), 'imports/test/' || p_sha, '2026-02-01', '2026-02-28',
             'COMMITTED', true, test.usr('accountant'), now())
     RETURNING id $$;
@@ -91,7 +91,7 @@ WHERE id = (SELECT id FROM b2);
 
 INSERT INTO imported_files (property_id, source_system, report_type, original_filename, mime_type, size_bytes, sha256, storage_key,
                             report_date_from, report_date_to)
-VALUES (test.prop(), 'HOTELRUNNER', 'RECEIPT_DETAIL', 'pending.xlsx', 'text/csv', 10, repeat('9', 64), 'imports/test/pending', '2026-02-27', '2026-02-27');
+VALUES (test.prop(), 'EZEE', 'RECEIPT_DETAIL', 'pending.xlsx', 'text/csv', 10, repeat('9', 64), 'imports/test/pending', '2026-02-27', '2026-02-27');
 SELECT test.assert_eq(pg_temp.c('imports_pending_review'), '1', 'an uploaded file not yet committed or rejected is an issue');
 UPDATE imported_files SET status = 'REJECTED', rejected_by = test.usr('accountant'), rejected_at = now(), reject_reason = 'ไฟล์ซ้ำ (ทดสอบ)'
 WHERE sha256 = repeat('9', 64);

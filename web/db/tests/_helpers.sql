@@ -94,7 +94,7 @@ DECLARE v_id bigint;
 BEGIN
     INSERT INTO revenue_entries (property_id, folio_id, service_date, revenue_type, amount_excl_tax, total_amount,
                                  ledger_account_id, status, source_system, source_ref, created_by, verified_by, verified_at)
-    SELECT f.property_id, p_folio, p_date, 'ROOM', p_amount, p_amount, test.acct('4101'), p_status, 'HOTELRUNNER', p_ref,
+    SELECT f.property_id, p_folio, p_date, 'ROOM', p_amount, p_amount, test.acct('4101'), p_status, 'EZEE', p_ref,
            test.usr('frontdesk'),
            CASE WHEN p_status = 'VERIFIED' THEN test.usr('accountant') END,
            CASE WHEN p_status = 'VERIFIED' THEN now() END
@@ -112,7 +112,7 @@ BEGIN
     INSERT INTO payments (property_id, receipt_type, received_date, method, bank_account_id, amount, fee_amount,
                           channel_id, status, source_system, source_ref, created_by, verified_by, verified_at)
     VALUES (test.prop(), p_type, p_date, CASE WHEN p_type = 'OTA_PAYOUT' THEN 'OTA_PAYOUT' ELSE 'BANK_TRANSFER' END,
-            test.bank(p_bank), p_amount, p_fee, p_channel, p_status, 'HOTELRUNNER', p_ref, test.usr('frontdesk'),
+            test.bank(p_bank), p_amount, p_fee, p_channel, p_status, 'EZEE', p_ref, test.usr('frontdesk'),
             CASE WHEN p_status = 'VERIFIED' THEN test.usr('accountant') END,
             CASE WHEN p_status = 'VERIFIED' THEN now() END)
     RETURNING id INTO v_id;
@@ -186,7 +186,7 @@ END $$;
 -- ------------------------------------------------------------------ shared fixture (committed in the test DB)
 
 INSERT INTO properties (code, name_th, name_en, pms_system, accounting_start_date, is_sandbox)
-VALUES ('TEST_RESORT', '[ทดสอบ] รีสอร์ตตัวอย่าง', '[TEST] Demo resort', 'HOTELRUNNER', '2026-01-01', true),
+VALUES ('TEST_RESORT', '[ทดสอบ] รีสอร์ตตัวอย่าง', '[TEST] Demo resort', 'EZEE', '2026-01-01', true),
        ('TEST_OTHER',  '[ทดสอบ] กิจการอื่น',      '[TEST] Other business', 'NONE', '2026-01-01', true);
 
 INSERT INTO users (email, display_name) VALUES
@@ -216,12 +216,12 @@ VALUES (test.prop(), '101', 'Deluxe', '2026-01-01'),
        (test.prop(), '103', 'Superior', '2026-01-01');
 
 INSERT INTO reservations (property_id, channel_id, source_system, source_ref, guest_name, arrival_date, departure_date, status)
-VALUES (test.prop(), test.channel('DIRECT'), 'HOTELRUNNER', 'R-1001', '[TEST] Guest A', '2026-03-10', '2026-03-12', 'CHECKED_OUT'),
-       (test.prop(), test.channel('BOOKING_COM'), 'HOTELRUNNER', 'R-1002', '[TEST] Guest B', '2026-03-10', '2026-03-11', 'CHECKED_OUT'),
-       (test.prop(), test.channel('EXPEDIA'), 'HOTELRUNNER', 'R-1003', '[TEST] Guest C', '2026-03-20', '2026-03-21', 'CONFIRMED');
+VALUES (test.prop(), test.channel('DIRECT'), 'EZEE', 'R-1001', '[TEST] Guest A', '2026-03-10', '2026-03-12', 'CHECKED_OUT'),
+       (test.prop(), test.channel('BOOKING_COM'), 'EZEE', 'R-1002', '[TEST] Guest B', '2026-03-10', '2026-03-11', 'CHECKED_OUT'),
+       (test.prop(), test.channel('EXPEDIA'), 'EZEE', 'R-1003', '[TEST] Guest C', '2026-03-20', '2026-03-21', 'CONFIRMED');
 
 INSERT INTO folios (property_id, reservation_id, source_system, folio_no, bill_to_name, channel_id, room_id, opened_on, folio_type)
-SELECT r.property_id, r.id, 'HOTELRUNNER', 'F-' || substr(r.source_ref, 3), r.guest_name, r.channel_id,
+SELECT r.property_id, r.id, 'EZEE', 'F-' || substr(r.source_ref, 3), r.guest_name, r.channel_id,
        (SELECT id FROM rooms WHERE room_no = '10' || substr(r.source_ref, 6) AND property_id = r.property_id),
        r.arrival_date, CASE WHEN r.source_ref = 'R-1003' THEN 'OTA_CITY_LEDGER' ELSE 'GUEST' END
 FROM reservations r WHERE r.property_id = test.prop();

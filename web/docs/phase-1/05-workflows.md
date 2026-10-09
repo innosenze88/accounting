@@ -1,10 +1,10 @@
 # 5. Workflow Diagrams
 
-## W1 นำเข้ารายงานจาก HotelRunner (Module C)
+## W1 นำเข้ารายงานจาก eZee Absolute (Module C)
 
 ```mermaid
 flowchart TD
-    U[ผู้ใช้อัปโหลดไฟล์ CSV/XLSX<br/>เลือกประเภทรายงาน] --> H{SHA-256 ซ้ำกับไฟล์<br/>ที่ยังไม่ถูก REJECTED?}
+    U[ผู้ใช้อัปโหลดไฟล์ PDF/XLSX/CSV<br/>เลือกประเภทรายงาน] --> H{SHA-256 ซ้ำกับไฟล์<br/>ที่ยังไม่ถูก REJECTED?}
     H -- ซ้ำ --> HX[แจ้ง: ไฟล์นี้นำเข้าแล้วเมื่อ ... โดย ...<br/>ไม่สร้างอะไรใหม่]
     H -- ไม่ซ้ำ --> S[เก็บไฟล์ต้นฉบับใน private storage<br/>imported_files = UPLOADED]
     S --> D{จับคู่หัวคอลัมน์กับ<br/>import_mapping_profiles}

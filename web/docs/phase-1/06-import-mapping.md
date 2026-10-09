@@ -4,10 +4,14 @@
 
 | แหล่งข้อมูล | ใช้อย่างไร | ความน่าเชื่อถือ |
 |---|---|---|
+| **PMS ที่ใช้จริง: eZee Absolute (Cloud)** — เจ้าของยืนยันเมื่อ 9 ต.ค. 2569 ว่าใช้ eZee และ **ไม่มีแผนย้าย PMS** (requirement เดิมระบุ HotelRunner) | ทุก mapping ในเอกสารนี้ใช้ `source_system = 'EZEE'` | ✅ ยืนยันแล้ว |
 | **โครงสร้างรายงาน eZee Absolute** ที่ตัวอ่านในแอป Android (`app/src/main/java/com/example/data/ezee/EzeeReportParser.kt`) อ่านได้ — สร้างจากไฟล์ PDF จริงที่รีสอร์ตได้รับทางอีเมล และมีเทสต์ (`EzeeReportParserTest.kt`) | เป็นฐานของ "ฟิลด์มาตรฐาน" และคอลัมน์ต้นทางด้านล่าง | ✅ ยืนยันจากไฟล์จริง (รูปแบบ PDF) |
-| **HotelRunner** — เอกสารช่วยเหลือของ HotelRunner ระบุว่ารายงานปิดวัน (PMS › Night Audit › Archive) มีหมวด Overview (occupancy, revenue, ADR), Financial Statements (เงินสด บัตร ออนไลน์), Cashier and Reservation Transactions, Cancellation and No-Show และส่งออกเป็น PDF/Excel ได้; เมนู PMS › Reports มี Revenue Report, Payments Report ฯลฯ ที่เลือกฟิลด์ได้ | ใช้ตั้งสมมติฐานว่ารายงานไหนของ HotelRunner ทำหน้าที่ใด | ⚠️ **ยังไม่มีไฟล์ตัวอย่าง** — ชื่อคอลัมน์จริงของ HotelRunner **ยังไม่ทราบ** ทุกช่อง "HotelRunner" ด้านล่างเป็น "ต้องยืนยัน" |
+| **ไฟล์ Excel/CSV ที่ส่งออกจาก eZee** | ถ้าส่งออกได้ จะใช้เป็นช่องทางหลัก (อ่านง่ายกว่า PDF และชื่อภาษาไทยไม่เพี้ยน) | ⚠️ **ยังไม่เคยเห็นไฟล์** — หัวคอลัมน์ของ Excel/CSV อาจไม่ตรงกับ PDF ต้องยืนยันจากไฟล์ตัวอย่าง (ไฟล์ 07 ข้อ A2, A3) |
+| **Receipt Detail ของ eZee** | แหล่งเงินรับจริง | ⚠️ แอปเดิมไม่มีตัวอ่าน — ยังไม่เคยเห็นโครงสร้าง ต้องได้ไฟล์ตัวอย่าง |
 
-ข้อสังเกตสำคัญ: ชื่อรายงานใน requirement (Night Audit, Monthly Statistics, Front Desk Activities, Receipt Detail, Expense Voucher) ตรงกับชื่อรายงานของ **eZee Absolute** ทุกชื่อ ระบบจึงออกแบบให้ **ประเภทรายงานกำหนดตามหน้าที่** (`report_type`) และผูกกับไฟล์จริงผ่าน `import_mapping_profiles` (แยกตาม `source_system` = `HOTELRUNNER`/`EZEE`) — เมื่อได้ไฟล์ตัวอย่างจะเพิ่มแม่แบบได้โดยไม่แก้โค้ด และแม่แบบจะเปลี่ยนสถานะเป็น `VERIFIED_WITH_SAMPLE` ก็ต่อเมื่อทดสอบกับไฟล์จริงแล้ว
+ระบบกำหนด **ประเภทรายงานตามหน้าที่** (`report_type`) และผูกกับไฟล์จริงผ่าน `import_mapping_profiles` แยกตามรูปแบบไฟล์ (`file_format` = PDF / XLSX / CSV) — แม่แบบจะเปลี่ยนสถานะเป็น `VERIFIED_WITH_SAMPLE` ก็ต่อเมื่อทดสอบกับไฟล์จริงแล้ว
+
+**รูปแบบไฟล์ที่จะนำเข้า (ต้องตัดสินใจเมื่อเห็นไฟล์)**: ปัจจุบันรีสอร์ตได้รับรายงาน eZee เป็น **PDF ทางอีเมลทุกคืน** (แอป Android อ่านไฟล์เหล่านี้อยู่) — ถ้า eZee Cloud ดาวน์โหลดรายงานเดียวกันเป็น Excel/CSV ได้ จะใช้ Excel/CSV เป็นหลักตาม requirement; ถ้าได้เฉพาะ PDF ตัวอ่าน PDF (ซึ่งมีต้นแบบและเทสต์ในแอป Android แล้ว) จะย้ายจาก "อนาคต" มาอยู่ใน Phase 2
 
 **คำขอ requirement ระบุ "3 ประเภท"**: เอกสารนี้ทำ mapping ละเอียดของ 3 ประเภทแรก (Night Audit, Monthly Statistics, Front Desk Activities) และเพิ่ม Receipt Detail, Expense Voucher และ Bank Statement เพราะเป็นแหล่งเดียวของ "เงินรับจริง" และ "รายจ่าย" — ถ้า "3 ประเภท" หมายถึงชุดอื่น โปรดระบุ
 
@@ -35,10 +39,10 @@
 | แถวสรุป/หัวตาราง | แถว Total/Grand Total ไม่เป็นรายการ แต่เก็บเป็น `source_control_totals` เพื่อเทียบ |
 | ชื่อ Source/ช่องทาง | จับคู่กับ `ota_channels.pms_source_names` (เช่น `Booking.com`, `Booking.com-1`) — ไม่พบ = CONFLICT ให้ผู้ใช้เลือกช่องทาง |
 | ข้อมูลส่วนบุคคล | ไม่นำเบอร์โทร/อีเมล/เลขบัตรเข้าตารางบัญชี (ยังอยู่ในไฟล์ต้นฉบับและ `raw_data` ซึ่งเข้าถึงได้เฉพาะผู้มีสิทธิ์) |
-| natural_key | `{property_id}|{source_system}|{report_type}|{อ้างอิงของแถว}` — ระบุต่อรายงานด้านล่าง |
+| natural_key | `{property_id}\|{source_system}\|{report_type}\|{อ้างอิงของแถว}` — ระบุต่อรายงานด้านล่าง |
 | row_hash | SHA-256 ของ `normalized_data` (เรียง key) — key เดิม hash เดิม = DUPLICATE, hash ต่าง = CONFLICT |
 
-ตัวอย่าง `import_mapping_profiles.column_map` (รูปแบบ — คอลัมน์ HotelRunner ยังเป็นค่าสมมติจนกว่าจะได้ไฟล์):
+ตัวอย่าง `import_mapping_profiles.column_map` (รูปแบบ — ชื่อคอลัมน์ตามรายงาน eZee ฉบับ PDF; ไฟล์ Excel/CSV ต้องยืนยันว่าหัวคอลัมน์ตรงกัน):
 
 ```json
 {
@@ -58,25 +62,24 @@
 - ความถี่: วันละ 1 ไฟล์ (ทุกวัน แม้ไม่มีแขก — ใช้ตรวจความครบถ้วนของเดือน)
 - `report_date_from = report_date_to = business_date`
 - โครงสร้าง eZee: 3 ส่วน — Room Charges (รายห้อง), Daily Sales (สรุปตามประเภทยอดขาย), Room Status (สถานะห้อง)
-- HotelRunner (ต้องยืนยัน): Night Audit › Archive ของวันนั้น ส่งออก Excel — คาดว่าส่วน "Reservation Transactions"/"Overview" ทำหน้าที่ Room Charges/Daily Sales
 
 ### A. ส่วน Room Charges (1 แถว = 1 ห้อง-คืน)
 
-| ฟิลด์มาตรฐาน | ชนิด | บังคับ | eZee (ยืนยันจากไฟล์จริง) | HotelRunner (ต้องยืนยัน) | ปลายทาง |
-|---|---|---|---|---|---|
-| `business_date` | date | ✔ | หัวรายงาน `As On Date` | วันที่ของ Archive | `revenue_entries.service_date` |
-| `room_no` | text | ✔ | `11 - Deluxe` → ส่วนหน้าเครื่องหมาย `-` | Room | `rooms.room_no` → `room_id` |
-| `room_type` | text | | `11 - Deluxe` → ส่วนหลัง | Room Type | ตรวจกับ `rooms.room_type` |
-| `folio_no` | text | ✔ | คอลัมน์ที่ 2 (เลข folio) | Folio / Reservation No. | `folios.folio_no` (สร้างถ้ายังไม่มี) |
-| `guest_name` | text | | คอลัมน์ที่ 3 | Guest | `folios.bill_to_name` |
-| `source_name` | text | | คอลัมน์ Source (เช่น `Expedia`) — ว่างได้ | Channel / Source | `ota_channels` ผ่าน `pms_source_names` |
-| `rate_type` | text | | `Room Only` | Rate Plan | `revenue_entries.description` |
-| `normal_tariff` | money | | Normal Tariff | Rack rate | ข้อมูลประกอบ |
-| `offered_tariff` | money | ✔ | Offered Tariff | Rate / Price | `amount_excl_tax` |
-| `total_tax` | money | ✔ | Total Tax | Tax | `vat_amount` (ดูกฎ VAT) |
-| `total_rent` | money | ✔ | Total Rent | Total | `total_amount` |
-| `variance_pct` | number | | Variance % | — | ข้อมูลประกอบ (เช่น −32.5% บ่งชี้ราคาสุทธิ OTA) |
-| `user` | text | | คอลัมน์สุดท้าย (เช่น `admin`) | User | `raw_data` เท่านั้น |
+| ฟิลด์มาตรฐาน | ชนิด | บังคับ | eZee (ยืนยันจาก PDF จริง) | ปลายทาง |
+|---|---|---|---|---|
+| `business_date` | date | ✔ | หัวรายงาน `As On Date` | `revenue_entries.service_date` |
+| `room_no` | text | ✔ | `11 - Deluxe` → ส่วนหน้าเครื่องหมาย `-` | `rooms.room_no` → `room_id` |
+| `room_type` | text | | `11 - Deluxe` → ส่วนหลัง | ตรวจกับ `rooms.room_type` |
+| `folio_no` | text | ✔ | คอลัมน์ที่ 2 (เลข folio) | `folios.folio_no` (สร้างถ้ายังไม่มี) |
+| `guest_name` | text | | คอลัมน์ที่ 3 | `folios.bill_to_name` |
+| `source_name` | text | | คอลัมน์ Source (เช่น `Expedia`) — ว่างได้ | `ota_channels` ผ่าน `pms_source_names` |
+| `rate_type` | text | | `Room Only` | `revenue_entries.description` |
+| `normal_tariff` | money | | Normal Tariff | ข้อมูลประกอบ |
+| `offered_tariff` | money | ✔ | Offered Tariff | `amount_excl_tax` |
+| `total_tax` | money | ✔ | Total Tax | `vat_amount` (ดูกฎ VAT) |
+| `total_rent` | money | ✔ | Total Rent | `total_amount` |
+| `variance_pct` | number | | Variance % | ข้อมูลประกอบ (เช่น −32.5% บ่งชี้ราคาสุทธิ OTA) |
+| `user` | text | | คอลัมน์สุดท้าย (เช่น `admin`) | `raw_data` เท่านั้น |
 
 - **natural_key**: `{pid}|{src}|NIGHT_AUDIT|{business_date}|{folio_no}|{room_no}|ROOM`
 - **ตรวจรายแถว**: `total_rent = offered_tariff + total_tax` (ต่างได้ 0.00); ยอด ≥ 0; folio ไม่ว่าง; ห้องมีอยู่และ active ในวันนั้น
@@ -106,23 +109,22 @@
 
 - ความถี่: เดือนละครั้งหลังสิ้นเดือน (นำเข้าระหว่างเดือนได้ แต่ทุกวันหลังวันออกรายงานคือ `is_forecast = true`)
 - `report_date_from` = วันที่ 1, `report_date_to` = วันสุดท้ายของเดือน (จากหัว `Month September,2026`)
-- HotelRunner (ต้องยืนยัน): คาดว่าเป็น Revenue Report / Occupancy report รายวันในเดือน
 
-| ฟิลด์มาตรฐาน | ชนิด | บังคับ | eZee | HotelRunner | ปลายทาง `pms_daily_statistics` |
-|---|---|---|---|---|---|
-| `stat_date` | date | ✔ | หัว `Month <ชื่อเดือน>,<ปี>` + เลขวันต้นแถว (`1 Tue`) | Date | `stat_date` |
-| `available_rooms` | int | ✔ | คอลัมน์ 1 | Available | `rooms_available` |
-| `nights_sold` | int | ✔ | คอลัมน์ 2 | Sold / Room nights | `rooms_sold` |
-| `complimentary` | int | | คอลัมน์ 3 | Complimentary | `complimentary_rooms` |
-| `occupancy_pct` | number | | คอลัมน์ 4 | Occupancy % | `occupancy_pct` |
-| `adr` | money | | คอลัมน์ 5 | ADR | `adr` |
-| `revpar` | money | | คอลัมน์ 6 | RevPAR | `revpar` |
-| `pax` | int | | คอลัมน์ 7 | Guests | `guests` |
-| `room_charges` | money | ✔ | คอลัมน์ 8 | Room Revenue | `room_charges` |
-| `extra_charges` | money | | คอลัมน์ 9 | Extras | `extra_charges` |
-| `tax` | money | | คอลัมน์ 10 | Tax | `tax_amount` |
-| `receipt` | money | | คอลัมน์ 11 | Payments | `receipts` |
-| `expense` | money | | คอลัมน์ 12 | Expenses | `expenses` |
+| ฟิลด์มาตรฐาน | ชนิด | บังคับ | eZee | ปลายทาง `pms_daily_statistics` |
+|---|---|---|---|---|
+| `stat_date` | date | ✔ | หัว `Month <ชื่อเดือน>,<ปี>` + เลขวันต้นแถว (`1 Tue`) | `stat_date` |
+| `available_rooms` | int | ✔ | คอลัมน์ 1 | `rooms_available` |
+| `nights_sold` | int | ✔ | คอลัมน์ 2 | `rooms_sold` |
+| `complimentary` | int | | คอลัมน์ 3 | `complimentary_rooms` |
+| `occupancy_pct` | number | | คอลัมน์ 4 | `occupancy_pct` |
+| `adr` | money | | คอลัมน์ 5 | `adr` |
+| `revpar` | money | | คอลัมน์ 6 | `revpar` |
+| `pax` | int | | คอลัมน์ 7 | `guests` |
+| `room_charges` | money | ✔ | คอลัมน์ 8 | `room_charges` |
+| `extra_charges` | money | | คอลัมน์ 9 | `extra_charges` |
+| `tax` | money | | คอลัมน์ 10 | `tax_amount` |
+| `receipt` | money | | คอลัมน์ 11 | `receipts` |
+| `expense` | money | | คอลัมน์ 12 | `expenses` |
 
 - **natural_key**: `{pid}|{src}|MONTHLY_STATISTICS|{stat_date}|{sha256 ของไฟล์ 12 ตัวแรก}` (เก็บทุก snapshot แสดงฉบับล่าสุด)
 - **ตรวจภายในไฟล์**: Σ แถว = แถว `Total` สำหรับ nights_sold, room_charges, tax, receipt, expense; `occupancy ≈ nights_sold ÷ available × 100` (±0.01); `adr ≈ room_charges ÷ nights_sold`; `revpar ≈ room_charges ÷ available`
@@ -135,26 +137,25 @@
 
 - ความถี่: รายวัน (เช้า/ปิดวัน)
 - โครงสร้าง eZee: หัว `Date dd/mm/yyyy`; หลายส่วน (เช่น `Departing Guests`, `Pending Check-outs`, Arrivals, In House) แต่ละแขก 2 บรรทัด: บรรทัดห้อง/แขก และบรรทัด `Folio No. | Total | Paid | Balance`
-- HotelRunner (ต้องยืนยัน): Arrivals/Departures/In-house list หรือ Folio report
 
-| ฟิลด์มาตรฐาน | ชนิด | บังคับ | eZee | HotelRunner | ปลายทาง |
-|---|---|---|---|---|---|
-| `report_date` | date | ✔ | หัว `Date` | วันที่รายงาน | `folios.pms_snapshot_date` |
-| `section` | text | ✔ | ชื่อส่วน (`Departing Guests`, `Pending Check-outs`, ...) | Status | กำหนด `reservations.status` ตามตารางด้านล่าง |
-| `room` | text | ✔ | `4 - Superior` | Room | `rooms` |
-| `guest_name` | text | | ชื่อแขก (ไม่เก็บเบอร์ที่อยู่ติดกัน) | Guest | `reservations.guest_name` |
-| `arrival` | date | ✔ | Arrival | Check-in | `reservations.arrival_date` |
-| `departure` | date | ✔ | Departure | Check-out | `reservations.departure_date` |
-| `nights` | int | | Nights | Nights | ตรวจ = departure − arrival |
-| `pax` | text | | `2/0` (ผู้ใหญ่/เด็ก) | Adults/Children | `adults`, `children` |
-| `rate_type` | text | | Rate Type | Rate plan | — |
-| `source` | text | | Source (เช่น `Expedia`) | Channel | `reservations.channel_id` |
-| `res_no` | text | ✔ | Res No. (เช่น `937`, `918-2`) | Reservation No. | `reservations.source_ref` |
-| `voucher` | text | | Voucher | OTA confirmation | `reservations.ota_booking_ref` |
-| `folio_no` | text | ✔ | Folio No. | Folio | `folios.folio_no` |
-| `folio_total` | money | ✔ | Total | Total | `folios.pms_total` |
-| `folio_paid` | money | ✔ | Paid | Paid | `folios.pms_paid` |
-| `folio_balance` | money | ✔ | Balance | Balance | `folios.pms_balance` |
+| ฟิลด์มาตรฐาน | ชนิด | บังคับ | eZee | ปลายทาง |
+|---|---|---|---|---|
+| `report_date` | date | ✔ | หัว `Date` | `folios.pms_snapshot_date` |
+| `section` | text | ✔ | ชื่อส่วน (`Departing Guests`, `Pending Check-outs`, ...) | กำหนด `reservations.status` ตามตารางด้านล่าง |
+| `room` | text | ✔ | `4 - Superior` | `rooms` |
+| `guest_name` | text | | ชื่อแขก (ไม่เก็บเบอร์ที่อยู่ติดกัน) | `reservations.guest_name` |
+| `arrival` | date | ✔ | Arrival | `reservations.arrival_date` |
+| `departure` | date | ✔ | Departure | `reservations.departure_date` |
+| `nights` | int | | Nights | ตรวจ = departure − arrival |
+| `pax` | text | | `2/0` (ผู้ใหญ่/เด็ก) | `adults`, `children` |
+| `rate_type` | text | | Rate Type | — |
+| `source` | text | | Source (เช่น `Expedia`) | `reservations.channel_id` |
+| `res_no` | text | ✔ | Res No. (เช่น `937`, `918-2`) | `reservations.source_ref` |
+| `voucher` | text | | Voucher | `reservations.ota_booking_ref` |
+| `folio_no` | text | ✔ | Folio No. | `folios.folio_no` |
+| `folio_total` | money | ✔ | Total | `folios.pms_total` |
+| `folio_paid` | money | ✔ | Paid | `folios.pms_paid` |
+| `folio_balance` | money | ✔ | Balance | `folios.pms_balance` |
 
 | ส่วนในรายงาน | สถานะที่ตั้ง |
 |---|---|
@@ -173,8 +174,8 @@
 
 ## 6.5 RECEIPT_DETAIL — เงินรับจริง
 
-- HotelRunner (ต้องยืนยัน): Payments Report หรือส่วน Financial Statements/Cashier ของ Night Audit Archive
-- eZee: ไม่มีตัวอ่าน Receipt Detail ในแอปเดิม (มีเฉพาะยอดรวมตามวิธีชำระใน Manager Report: `MOBILE BANKING`, `Cash`, `Total Payment`) — **ยังไม่มีโครงสร้างคอลัมน์ที่ยืนยันได้จากทั้งสองระบบ**
+- eZee: แอปเดิมไม่มีตัวอ่าน Receipt Detail — **ยังไม่เคยเห็นโครงสร้างคอลัมน์** คอลัมน์ด้านล่างเป็นฟิลด์ที่ต้องการ ต้องยืนยันกับไฟล์ตัวอย่าง
+- ยอดควบคุมที่มีอยู่แล้ว: Manager Report ของ eZee มียอดรวมตามวิธีชำระ (`MOBILE BANKING`, `Cash`, `Total Payment`) ของวันเดียวกัน — ใช้เทียบกับ Σ Receipt Detail ได้ (ไม่นำเข้าเป็นเงินรับซ้ำ)
 
 | ฟิลด์มาตรฐาน | ชนิด | บังคับ | คอลัมน์ต้นทาง (ต้องยืนยัน) | ปลายทาง |
 |---|---|---|---|---|
@@ -199,7 +200,7 @@
 ## 6.6 EXPENSE_VOUCHER — รายจ่ายที่บันทึกใน PMS
 
 - eZee (ยืนยันจากไฟล์จริง): หัว `Date From dd/mm/yyyy To dd/mm/yyyy`; ตาราง `Date | Bill To | Charge | Comment | Amount() | Pay Method | User`; แถว `Grand Total`; ตารางสรุป `Pay Method Wise Summary` และ `Charge wise Summary`
-- HotelRunner: **ไม่ทราบว่ามีโมดูลรายจ่ายหรือไม่** (ไฟล์ 07 ข้อ A4) — ถ้าไม่มี รายจ่ายบันทึกในระบบนี้โดยตรง
+- ต้องยืนยันว่าพนักงานบันทึกรายจ่ายใน Expense Voucher ของ eZee **ทุกรายการ** หรือเฉพาะบางส่วน (เช่น จ่ายเงินสดหน้าร้าน) — รายจ่ายที่ไม่ได้อยู่ใน eZee บันทึกในระบบนี้โดยตรง (ไฟล์ 07 ข้อ A4)
 
 | ฟิลด์มาตรฐาน | ชนิด | บังคับ | eZee | ปลายทาง |
 |---|---|---|---|---|
@@ -241,6 +242,6 @@
 
 ---
 
-## 6.8 PDF (อนาคต)
+## 6.8 PDF
 
-โครงสร้างรองรับแล้ว: `import_mapping_profiles.file_format = 'PDF'` และ pipeline เดียวกัน (raw_data = ข้อความแต่ละบรรทัด/คอลัมน์) — วิธีอ่าน PDF แบบไม่ใช้ AI (แยกคอลัมน์ด้วยตำแหน่งตัวอักษร) มีต้นแบบในแอป Android (`PdfLineBuilder.kt`, `EzeeReportParser.kt`) ใช้เป็นกรณีทดสอบได้ — กฎเทียบยอดรวมเหมือนเดิม และ PDF ที่ยอดไม่ตรงจะ commit ไม่ได้เช่นกัน
+ถ้า eZee Cloud ส่งออกรายงานเป็น Excel/CSV ไม่ได้ PDF จะเป็นช่องทางหลักและทำใน Phase 2 — โครงสร้างรองรับแล้ว: `import_mapping_profiles.file_format = 'PDF'` และ pipeline เดียวกัน (raw_data = ข้อความแต่ละบรรทัด/คอลัมน์) — วิธีอ่าน PDF แบบไม่ใช้ AI (แยกคอลัมน์ด้วยตำแหน่งตัวอักษร) มีต้นแบบในแอป Android (`PdfLineBuilder.kt`, `EzeeReportParser.kt`) ใช้เป็นกรณีทดสอบได้ — กฎเทียบยอดรวมเหมือนเดิม และ PDF ที่ยอดไม่ตรงจะ commit ไม่ได้เช่นกัน

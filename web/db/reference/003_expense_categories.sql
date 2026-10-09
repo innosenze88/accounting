@@ -13,7 +13,7 @@ FROM (VALUES
     ('ROOM_SUPPLIES',       'อุปกรณ์และของใช้ในห้องพัก',        'Guest room supplies',         'OPERATING_EXPENSE',  '5231', false, 70),
     ('LAUNDRY',             'ค่าซักรีด',                     'Laundry',                     'OPERATING_EXPENSE',  '5232', false, 80),
     ('CLEANING_SUPPLIES',   'วัสดุทำความสะอาด/สิ้นเปลือง',      'Cleaning & consumables',      'OPERATING_EXPENSE',  '5233', false, 90),
-    ('SOFTWARE',            'ค่าซอฟต์แวร์ (HotelRunner ฯลฯ)',  'Software subscriptions',      'OPERATING_EXPENSE',  '5241', false, 100),
+    ('SOFTWARE',            'ค่าซอฟต์แวร์ (eZee PMS ฯลฯ)',    'Software subscriptions',      'OPERATING_EXPENSE',  '5241', false, 100),
     ('PAYMENT_FEES',        'ค่าธรรมเนียมรับบัตร/QR',          'Payment processing fees',     'OPERATING_EXPENSE',  '5102', false, 110),
     ('LOCAL_TAX_FEES',      'ภาษีโรงเรือน/ป้าย/ค่าธรรมเนียมใบอนุญาต', 'Local taxes & licence fees', 'OPERATING_EXPENSE', '5251', true, 120),
     ('BANK_CHARGES',        'ค่าธรรมเนียมธนาคาร',             'Bank charges',                'OPERATING_EXPENSE',  '5261', false, 130),

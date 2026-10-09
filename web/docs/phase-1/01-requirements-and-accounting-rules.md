@@ -8,7 +8,7 @@
 | หัวข้อ | ข้อมูล | หมายเหตุ |
 |---|---|---|
 | กิจการ | วิภูอนันต์ รีสอร์ท — ห้องพักรายวัน | |
-| PMS | HotelRunner (ตามที่แจ้ง) | ⚠️ โค้ดเดิมใน repo นี้ (แอป Android v1.5.0) อ่านรายงาน **eZee Absolute** และชื่อรายงานที่ระบุใน requirement (Night Audit, Monthly Statistics, Front Desk Activities, Receipt Detail, Expense Voucher) เป็นชื่อรายงานของ eZee — ต้องยืนยันว่าใช้ระบบไหน/ย้ายเมื่อไร (ไฟล์ 07 ข้อ A1) |
+| PMS | **eZee Absolute (Cloud)** — เจ้าของยืนยัน 9 ต.ค. 2569 ไม่มีแผนย้าย PMS | requirement เดิมระบุ HotelRunner แต่ชื่อรายงานที่ระบุ (Night Audit, Monthly Statistics, Front Desk Activities, Receipt Detail, Expense Voucher) เป็นของ eZee และแอป Android เดิมอ่านรายงาน eZee อยู่แล้ว |
 | ห้อง | 15 ห้อง รองรับเพิ่มห้อง | ⚠️ แอป Android ตั้งค่าเริ่มต้นเป็นห้อง 1–16 ต้องยืนยันรายชื่อห้อง |
 | รายได้ประมาณการ | 1,900,000 บาท/ปี | **เป็นสมมติฐานของเจ้าของ** ไม่ใช่ข้อมูลบัญชี ใช้ได้เฉพาะช่อง `capital_scenarios.fallback_annual_revenue` และต้องแสดงป้าย "ยังไม่ตรวจสอบ" |
 | เป้าหมาย | ทุนเปิดร้านสะดวกซื้อ 2,000,000 บาท | เก็บเป็นข้อมูลใน `capital_goals.target_amount` ไม่ฝังในโค้ด |
@@ -85,7 +85,7 @@
 |---|---|---|---|
 | A Dashboard | 10 ตัวเลขตาม requirement ทุกตัวมีป้ายความครบถ้วนและวันที่ของข้อมูล; ไม่มีตัวเลขสมมติใน production | views ทั้งหมด | 3–7 (ประกอบทีละส่วน) |
 | B รายรับ/รายจ่าย | บันทึก 11 ประเภทรายการ, แยกวันที่เกิด/วันที่รับ/วันที่จ่าย, แนบหลักฐาน, ผู้บันทึก | revenue_entries, payments, expenses, expense_payments, attachments | 3 |
-| C นำเข้า HotelRunner | อัปโหลด → preview → ตรวจชนิดข้อมูล/วันที่ → กันซ้ำ → แสดงแถวที่ไม่ผ่าน → ตรวจยอดรวม → commit; รองรับ PDF ภายหลัง | import_mapping_profiles, imported_files, import_rows | 2 |
+| C นำเข้ารายงาน eZee Absolute | อัปโหลด → preview → ตรวจชนิดข้อมูล/วันที่ → กันซ้ำ → แสดงแถวที่ไม่ผ่าน → ตรวจยอดรวม → commit; Excel/CSV และ PDF (PDF เข้า Phase 2 ถ้า eZee ส่งออก Excel/CSV ไม่ได้) | import_mapping_profiles, imported_files, import_rows | 2 |
 | D กระทบยอดธนาคาร | นำเข้า statement, เสนอการจับคู่, many-to-many, partial, 4 สถานะ | bank_transactions, reconciliations, reconciliation_items | 4 |
 | E กำไรขาดทุน | รายวัน/เดือน/ปี, แยกหมวด, ค่าเสื่อมเมื่อมีข้อมูล, แยกกำไรกับกระแสเงินสด, ป้าย Preliminary/Incomplete | journal_entries, journal_lines, fixed_assets | 3 (posting), 5 (รายงาน) |
 | F ภาษี | ตั้งค่าตามรูปแบบกิจการที่นักบัญชียืนยัน, รายการตรวจสอบ, เอกสารประกอบ, ประมาณการเงินที่ควรกัน | tax_profiles, tax_rules, tax_estimates | 6 |
@@ -103,7 +103,7 @@
 
 ## 1.7 นอกขอบเขต Phase นี้ / สมมติฐาน
 
-- ไม่ทำระบบจองห้องหรือ channel manager (HotelRunner ทำอยู่แล้ว)
+- ไม่ทำระบบจองห้องหรือ channel manager (ทำใน eZee Absolute อยู่แล้ว)
 - ไม่ยื่นภาษีแทนนักบัญชี และไม่กำหนดอัตราภาษีเอง
 - สกุลเงินเดียว (THB); ถ้า OTA จ่ายเป็นสกุลอื่น ต้องออกแบบเพิ่ม
 - บัญชีของร้านสะดวกซื้อในอนาคตรองรับด้วย `properties` แยก แต่ยังไม่ออกแบบรายละเอียด

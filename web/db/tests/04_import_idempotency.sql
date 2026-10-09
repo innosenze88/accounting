@@ -6,20 +6,20 @@ CREATE TEMP TABLE t ON COMMIT DROP AS SELECT 0::bigint AS file_id, 0::bigint AS 
 
 INSERT INTO imported_files (property_id, source_system, report_type, original_filename, mime_type, size_bytes, sha256,
                             storage_key, report_date_from, report_date_to, uploaded_by)
-VALUES (test.prop(), 'HOTELRUNNER', 'RECEIPT_DETAIL', 'receipts_2026-03-10.xlsx',
+VALUES (test.prop(), 'EZEE', 'RECEIPT_DETAIL', 'receipts_2026-03-10.xlsx',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 2048, repeat('a', 64),
         'imports/test/receipts-1.xlsx', '2026-03-10', '2026-03-10', test.usr('frontdesk'));
 UPDATE t SET file_id = (SELECT id FROM imported_files WHERE sha256 = repeat('a', 64));
 
 SELECT test.assert_raises(
     $$INSERT INTO imported_files (property_id, source_system, report_type, original_filename, mime_type, size_bytes, sha256, storage_key)
-      VALUES (test.prop(), 'HOTELRUNNER', 'RECEIPT_DETAIL', 'receipts_copy.xlsx', 'text/csv', 2048, repeat('a', 64), 'imports/test/receipts-2.xlsx')$$,
+      VALUES (test.prop(), 'EZEE', 'RECEIPT_DETAIL', 'receipts_copy.xlsx', 'text/csv', 2048, repeat('a', 64), 'imports/test/receipts-2.xlsx')$$,
     '23505', 'uploading the very same file again is refused (same SHA-256)');
 
 INSERT INTO import_rows (imported_file_id, row_number, section, raw_data, normalized_data, natural_key, row_hash, status)
 SELECT file_id, 1, 'receipts', '{"Receipt No":"R-0001","Amount":"1,000.00","Date":"10/03/2569"}',
        '{"receipt_no":"R-0001","amount":"1000.00","date":"2026-03-10"}',
-       test.prop() || '|HOTELRUNNER|RECEIPT_DETAIL|R-0001', repeat('b', 64), 'VALID'
+       test.prop() || '|EZEE|RECEIPT_DETAIL|R-0001', repeat('b', 64), 'VALID'
 FROM t;
 UPDATE t SET row1 = (SELECT id FROM import_rows WHERE imported_file_id = t.file_id AND row_number = 1);
 
@@ -31,10 +31,10 @@ UPDATE import_rows SET status = 'COMMITTED', target_table = 'payments', target_i
 -- The same receipt arrives again in a second, different file (e.g. a re-exported report).
 INSERT INTO imported_files (property_id, source_system, report_type, original_filename, mime_type, size_bytes, sha256,
                             storage_key, report_date_from, report_date_to)
-VALUES (test.prop(), 'HOTELRUNNER', 'RECEIPT_DETAIL', 'receipts_2026-03-10_v2.xlsx', 'text/csv', 2050, repeat('c', 64),
+VALUES (test.prop(), 'EZEE', 'RECEIPT_DETAIL', 'receipts_2026-03-10_v2.xlsx', 'text/csv', 2050, repeat('c', 64),
         'imports/test/receipts-3.xlsx', '2026-03-10', '2026-03-10');
 INSERT INTO import_rows (imported_file_id, row_number, raw_data, natural_key, row_hash, status)
-SELECT id, 1, '{"Receipt No":"R-0001"}', test.prop() || '|HOTELRUNNER|RECEIPT_DETAIL|R-0001', repeat('b', 64), 'VALID'
+SELECT id, 1, '{"Receipt No":"R-0001"}', test.prop() || '|EZEE|RECEIPT_DETAIL|R-0001', repeat('b', 64), 'VALID'
 FROM imported_files WHERE sha256 = repeat('c', 64);
 UPDATE t SET row2 = (SELECT r.id FROM import_rows r JOIN imported_files f ON f.id = r.imported_file_id WHERE f.sha256 = repeat('c', 64));
 
@@ -43,7 +43,7 @@ SELECT test.assert_raises(
     '23505', 'a natural key that is already committed cannot be committed again');
 SELECT test.assert_raises(
     $$INSERT INTO payments (property_id, receipt_type, received_date, method, bank_account_id, amount, source_system, source_ref)
-      VALUES (test.prop(), 'GUEST_PAYMENT', '2026-03-10', 'CASH', test.bank('Cash drawer'), 1000, 'HOTELRUNNER', 'R-0001')$$,
+      VALUES (test.prop(), 'GUEST_PAYMENT', '2026-03-10', 'CASH', test.bank('Cash drawer'), 1000, 'EZEE', 'R-0001')$$,
     '23505', 'the same PMS receipt number cannot become two payments');
 SELECT test.assert_succeeds(
     format($$UPDATE import_rows SET status = 'DUPLICATE', duplicate_of_row_id = %s WHERE id = %s$$, (SELECT row1 FROM t), (SELECT row2 FROM t)),
@@ -78,7 +78,7 @@ UPDATE imported_files SET status = 'REJECTED', rejected_at = now(), rejected_by 
 WHERE sha256 = repeat('c', 64);
 SELECT test.assert_succeeds(
     $$INSERT INTO imported_files (property_id, source_system, report_type, original_filename, mime_type, size_bytes, sha256, storage_key)
-      VALUES (test.prop(), 'HOTELRUNNER', 'RECEIPT_DETAIL', 'receipts_2026-03-10_v2.xlsx', 'text/csv', 2050, repeat('c', 64), 'imports/test/receipts-4.xlsx')$$,
+      VALUES (test.prop(), 'EZEE', 'RECEIPT_DETAIL', 'receipts_2026-03-10_v2.xlsx', 'text/csv', 2050, repeat('c', 64), 'imports/test/receipts-4.xlsx')$$,
     'a rejected file can be uploaded again');
 SELECT test.assert_raises(
     $$UPDATE imported_files SET status = 'REJECTED', rejected_at = now() WHERE sha256 = repeat('c', 64) AND status = 'UPLOADED'$$,
@@ -106,7 +106,7 @@ UPDATE payments SET status = 'VOIDED', voided_by = test.usr('accountant'), voide
 WHERE id = (SELECT id FROM t_pay);
 SELECT test.assert_succeeds(
     $$INSERT INTO payments (property_id, receipt_type, received_date, method, bank_account_id, amount, source_system, source_ref)
-      VALUES (test.prop(), 'GUEST_PAYMENT', '2026-03-10', 'CASH', test.bank('Cash drawer'), 1100, 'HOTELRUNNER', 'R-0001')$$,
+      VALUES (test.prop(), 'GUEST_PAYMENT', '2026-03-10', 'CASH', test.bank('Cash drawer'), 1100, 'EZEE', 'R-0001')$$,
     'after voiding, the corrected receipt can be recorded under the same reference');
 
 ROLLBACK;

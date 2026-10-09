@@ -50,7 +50,7 @@ flowchart LR
         BK[Backup job<br/>pg_dump + encrypt]
     end
     OFF[(Off-site backup)]
-    HR[HotelRunner<br/>export CSV/XLSX]
+    HR[eZee Absolute Cloud<br/>รายงาน PDF/XLSX/CSV]
     BANK[Bank statement<br/>CSV/XLSX]
 
     O & A & F --> C --> App
