@@ -1,0 +1,53 @@
+name: Web DB CI
+
+# Database schema of the web accounting system (web/db): constraint tests, backup/restore drill,
+# and a check that the generated data dictionary matches the schema.
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/web-db-ci.yml"]
+  pull_request:
+    paths: ["web/**", ".github/workflows/web-db-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-db-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  db-tests:
+    name: db-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL 16 client
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -yq postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+      - name: Schema constraint tests
+        run: web/db/run-tests.sh
+      - name: Data dictionary is up to date
+        run: PGDATABASE=resort_acct_test web/db/tools/gen-data-dictionary.sh --check
+      - name: Backup / restore drill
+        run: web/db/tools/backup-restore-drill.sh
