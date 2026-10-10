@@ -8,12 +8,31 @@
 | **โครงสร้างรายงาน eZee Absolute** ที่ตัวอ่านในแอป Android (`app/src/main/java/com/example/data/ezee/EzeeReportParser.kt`) อ่านได้ — สร้างจากไฟล์ PDF จริงที่รีสอร์ตได้รับทางอีเมล และมีเทสต์ (`EzeeReportParserTest.kt`) | เป็นฐานของ "ฟิลด์มาตรฐาน" และคอลัมน์ต้นทางด้านล่าง | ✅ ยืนยันจากไฟล์จริง (รูปแบบ PDF) |
 | **ไฟล์ Excel/CSV ที่ส่งออกจาก eZee** | ถ้าส่งออกได้ จะใช้เป็นช่องทางหลัก (อ่านง่ายกว่า PDF และชื่อภาษาไทยไม่เพี้ยน) | ⚠️ **ยังไม่เคยเห็นไฟล์** — หัวคอลัมน์ของ Excel/CSV อาจไม่ตรงกับ PDF ต้องยืนยันจากไฟล์ตัวอย่าง (ไฟล์ 07 ข้อ A2, A3) |
 | **Receipt Detail ของ eZee** | แหล่งเงินรับจริง | ⚠️ แอปเดิมไม่มีตัวอ่าน — ยังไม่เคยเห็นโครงสร้าง ต้องได้ไฟล์ตัวอย่าง |
+| **ไฟล์จริงที่เจ้าของส่งมา (10 ต.ค. 2569)** — PDF 5 ไฟล์ของวันทำการ 13/09/2569: Front Desk Activities, Monthly Statistics, Yearly Statistics, Monthly Occupancy, No Show Report | ตรวจโครงสร้างและยอดรวมกับ mapping นี้ (ผลในหัวข้อ 6.0.1) | ✅ Monthly Statistics และ Front Desk Activities ตรงกับ mapping; ยอดรวม Monthly/Yearly ตรงทุกคอลัมน์ — ⚠️ ยังไม่ได้ Night Audit, Receipt Detail, Expense Voucher |
 
 ระบบกำหนด **ประเภทรายงานตามหน้าที่** (`report_type`) และผูกกับไฟล์จริงผ่าน `import_mapping_profiles` แยกตามรูปแบบไฟล์ (`file_format` = PDF / XLSX / CSV) — แม่แบบจะเปลี่ยนสถานะเป็น `VERIFIED_WITH_SAMPLE` ก็ต่อเมื่อทดสอบกับไฟล์จริงแล้ว
 
 **รูปแบบไฟล์ที่จะนำเข้า (ต้องตัดสินใจเมื่อเห็นไฟล์)**: ปัจจุบันรีสอร์ตได้รับรายงาน eZee เป็น **PDF ทางอีเมลทุกคืน** (แอป Android อ่านไฟล์เหล่านี้อยู่) — ถ้า eZee Cloud ดาวน์โหลดรายงานเดียวกันเป็น Excel/CSV ได้ จะใช้ Excel/CSV เป็นหลักตาม requirement; ถ้าได้เฉพาะ PDF ตัวอ่าน PDF (ซึ่งมีต้นแบบและเทสต์ในแอป Android แล้ว) จะย้ายจาก "อนาคต" มาอยู่ใน Phase 2
 
-**คำขอ requirement ระบุ "3 ประเภท"**: เอกสารนี้ทำ mapping ละเอียดของ 3 ประเภทแรก (Night Audit, Monthly Statistics, Front Desk Activities) และเพิ่ม Receipt Detail, Expense Voucher และ Bank Statement เพราะเป็นแหล่งเดียวของ "เงินรับจริง" และ "รายจ่าย" — ถ้า "3 ประเภท" หมายถึงชุดอื่น โปรดระบุ
+**ขอบเขต "3 ประเภท"** (เจ้าของยืนยัน 10 ต.ค. 2569): Night Audit, Monthly Statistics, Front Desk Activities เป็น mapping หลัก — เอกสารนี้เพิ่ม Receipt Detail, Expense Voucher และ Bank Statement ไว้ด้วย เพราะเป็นแหล่งเดียวของ "เงินรับจริง" และ "รายจ่าย"
+
+### 6.0.1 สิ่งที่พบจากไฟล์จริง (ไม่มีข้อมูลส่วนบุคคลของแขกในเอกสารนี้)
+
+| # | สิ่งที่พบ | ผลต่อการออกแบบ |
+|---|---|---|
+| 1 | ไฟล์มาเป็นชุดอัตโนมัติทุกคืน ชื่อไฟล์ `<รายงาน>_<รหัส>_<YYYYMMDD วันทำการ>_60029.pdf` สร้างเวลา ~06:11 ของเช้าวันถัดไป | ใช้วันที่ในชื่อไฟล์เป็นวันทำการ; `60029` น่าจะเป็นรหัสโรงแรมใน eZee (ต้องยืนยัน) → `properties.pms_property_ref` |
+| 2 | Front Desk Activities ของวันทำการ 13/09 พิมพ์ `Date 14/09/2026` (วันถัดไป) | `report_date` ของ FDA = วันทำการ + 1 — ต้องไม่ใช้เป็นวันที่ของรายได้ |
+| 3 | PDF มาจาก 2 เครื่องมือ: TCPDF (Front Desk — ชื่อภาษาไทยเป็น `???`) และ Stimulsoft (Monthly/Yearly/No Show/Occupancy — ภาษาไทยอ่านได้) | ตัวอ่าน PDF ต้องรองรับทั้งสองแบบ; ชื่อแขกจาก FDA ใช้จับคู่ไม่ได้ ใช้เลข folio/การจองแทน |
+| 4 | ห้องขายได้ **15 ห้อง/วัน** ทุกวัน แต่ใน FDA มีห้องเลข 16 | จำนวนห้อง = 15 ✅; เลขห้องไม่ต่อเนื่อง — ต้องได้รายชื่อห้องที่ขายจริง (ไฟล์ 07 ข้อ B1) |
+| 5 | eZee คิด **Occ% = (ขาย + ห้องฟรี) ÷ ห้องที่มี** และ **ADR = ค่าห้อง ÷ (ขาย + ห้องฟรี)** — ตรวจกับ Yearly: (1,476.5 + 8) ÷ 4,950 = 29.99%, 1,454,314.83 ÷ 1,484.5 = 979.67 | ปรับสูตรตรวจในหัวข้อ 6.3 |
+| 6 | ห้อง-คืนที่ขายมีทศนิยม (เมษายน 134.5) | เปลี่ยน `pms_daily_statistics.rooms_sold` เป็น NUMERIC แล้ว (มีเทสต์) |
+| 7 | คอลัมน์ Tax เป็น 0 ทั้งปี ยกเว้นกันยายน 529.24 จาก 3 รายการ; รายการที่ตรวจได้: ค่า No-show 990.00 = 841.12 + 148.88 (17.7% = 1.10 × 1.07 ตรงกับ service charge 10% + VAT 7% แบบรวมในราคา — **สมมติฐาน ต้องให้นักบัญชียืนยัน**) | กฎ R12 ทำงานตามออกแบบ: ถ้ากิจการยังไม่ยืนยันการจด VAT รายการที่มีภาษีจะเป็น CONFLICT ให้นักบัญชีตัดสิน |
+| 8 | การจอง **Expedia Collect**: Remark ระบุ `Expedia collects payment from traveler: Hotel invoices Expedia … Remittance Type: NET`; folio ยอด 1,019.26 จ่ายครบ 1,019.26 | **eZee บันทึกยอดสุทธิ (NET)** ของ Expedia Collect — หลักฐานสำหรับไฟล์ 07 ข้อ A5; Remark ใช้ระบุได้ว่าเป็น OTA Collect |
+| 9 | Pending Check-outs: 9 folio ที่ต้องออกวันที่ 13/09 ยังเปิดอยู่ ทุกใบ Paid = 0.00 รวมค้าง 11,580 บาท (+ ห้องที่ออก 14/09 ค้าง 1,680) | ใน eZee ยังไม่มีการรับเงิน — ต้องรู้ว่าเงินของการจองเหล่านี้บันทึกที่อื่นหรือยังไม่ได้รับจริง (ไฟล์ 07 ข้อ A9) |
+| 10 | Receipt ใน eZee ต่ำกว่าค่าห้องมากในบางช่วง (1–4 ก.ย. เต็ม 15 ห้องทุกคืน แต่ Receipt มีเพียง −1,400 วันที่ 3 ก.ย.) | ยืนยันว่าต้องแยกรายได้กับเงินรับ; Receipt ติดลบ = คืนเงิน → `GUEST_REFUND` |
+| 11 | No Show Report: Booking.com ไม่มาเข้าพัก จ่ายแล้ว 2,320 แต่ไม่มีการคิดค่า No-show → ยอดคงเหลือ −2,320 (เงินค้างในระบบ); Expedia ไม่มาเข้าพัก คิดค่า 990.00 | เป็นกรณี "เงินรับล่วงหน้า" ที่ต้องตัดสินว่าเป็นรายได้หรือคืนเงิน; แนะนำนำเข้า No Show Report เพิ่ม (หัวข้อ 6.4.1) เพื่อผูกค่า No-show กับ folio |
+| 12 | Yearly: มกราคม 2569 ห้องที่ขายได้ = 0 แต่ Expense 119,754.81; เริ่มขายกุมภาพันธ์ (360 = 24 วัน × 15 ห้อง); Expense ถูกบันทึกใน eZee ทุกเดือน ก.พ.–ส.ค. | Expense Voucher ของ eZee ถูกใช้งานจริง; วันเริ่มระบบและยอดยกมาต้องตกลงกับนักบัญชี |
+| 13 | Monthly Occupancy เป็นกราฟ ไม่มีตารางตัวเลข | ไม่นำเข้า (ใช้ Monthly Statistics แทน) |
 
 ### หน้าที่ของแต่ละรายงาน (กันนับซ้ำ)
 
@@ -127,7 +146,9 @@
 | `expense` | money | | คอลัมน์ 12 | `expenses` |
 
 - **natural_key**: `{pid}|{src}|MONTHLY_STATISTICS|{stat_date}|{sha256 ของไฟล์ 12 ตัวแรก}` (เก็บทุก snapshot แสดงฉบับล่าสุด)
-- **ตรวจภายในไฟล์**: Σ แถว = แถว `Total` สำหรับ nights_sold, room_charges, tax, receipt, expense; `occupancy ≈ nights_sold ÷ available × 100` (±0.01); `adr ≈ room_charges ÷ nights_sold`; `revpar ≈ room_charges ÷ available`
+- **ตรวจภายในไฟล์**: Σ แถว = แถว `Total` สำหรับ available, nights_sold, complimentary, pax, room_charges, extra_charges, tax, receipt, expense; `occupancy ≈ (nights_sold + complimentary) ÷ available × 100` (±0.01); `adr ≈ room_charges ÷ (nights_sold + complimentary)`; `revpar ≈ room_charges ÷ available`
+- ✅ **ทดสอบกับไฟล์จริงแล้ว** (กันยายน 2569 และ Yearly 2569): ทุกคอลัมน์ Σ แถว = Total ตรงทุกสตางค์; สูตร Occ/ADR/RevPAR ตรงกับที่พิมพ์
+- `nights_sold`/`complimentary` มีทศนิยมได้ (0.5); `receipt` ติดลบได้ (วันที่มีคืนเงิน)
 - **เทียบข้ามรายงาน (แสดงเป็นรายการผลต่าง ไม่ลงบัญชี)**: `room_charges` ต่อวัน vs Σ `revenue_entries` ROOM ที่ VERIFIED วันนั้น; `receipt` vs Σ `payments` ของวันนั้น; `expense` vs Σ รายจ่ายจาก Expense Voucher
 - ⚠️ รายงานรวมวันที่ยังไม่ถึง (ยอดจองล่วงหน้า) — ห้ามนับเป็นรายได้
 
@@ -169,6 +190,20 @@
 - **ตรวจ**: `balance = total − paid`; `nights = departure − arrival`; วันที่ arrival < departure
 - **ผลลัพธ์ที่ใช้**: รายการ folio ที่ `v_folio_balances.balance ≠ pms_balance` (คอลัมน์ `difference_vs_pms`) ให้คนตรวจ — ใช้หาเงินรับ/รายได้ที่ยังไม่ได้นำเข้า
 - ⚠️ PDF ของ eZee ฝังฟอนต์ไทยไม่ครบ ชื่อไทยกลายเป็น `???` — ไฟล์ Excel/CSV ไม่มีปัญหานี้
+- ✅ **ตรวจกับไฟล์จริงแล้ว** (ฉบับ 14/09/2569): ส่วน `Departing Guests` และ `Pending Check-outs` ตรงกับ mapping — สิ่งที่ตัวอ่านต้องรองรับเพิ่ม:
+  - `Date` ในรายงาน = วันทำการ + 1
+  - ชื่อประเภทห้องยาวหลายบรรทัด (เช่น `Triple Room With Queen Bed + Twin Bed + Sofa Bed`)
+  - บล็อก `Remark` ใต้การจอง (เช่น `Expedia Collect Booking … Remittance Type: NET`) → เก็บใน `raw_data` และใช้ตั้งธงว่าเป็น OTA Collect
+  - หน้า 2 ของ PDF ตัวอักษรเลื่อนตำแหน่ง (ย่อหน้าต่างจากหน้า 1)
+  - คอลัมน์ Mobile มีเบอร์โทรแขก — ไม่นำเข้าตารางบัญชี
+  - คอลัมน์ Voucher = เลขยืนยันของ OTA → `reservations.ota_booking_ref`
+
+### 6.4.1 NO_SHOW_REPORT (แนะนำเพิ่ม — ไม่อยู่ใน 3 ประเภทหลัก)
+
+- ได้ไฟล์จริงแล้ว (As On Date 13/09/2569): คอลัมน์ `Res. No | Guest Name | Arrival | Dept. | Folio No | No Show Revenue | Charges | Paid | Balance | Source | User/วันที่บันทึก` + `Remark` และแถวรวม `#(จำนวน)`
+- ใช้ทำอะไร: ผูกรายได้ค่า No-show กับ folio จริง (แทนการพักไว้ที่ folio `HOUSE` ตามหัวข้อ 6.2 B) และหาการจองที่จ่ายแล้วแต่ไม่มาโดยยังไม่ได้คิดค่า (ยอดคงเหลือติดลบ = เงินรับล่วงหน้าที่ต้องตัดสิน)
+- ⚠️ PDF ฉบับนี้คอลัมน์แคบจนตัวเลขและเลขการจองถูกตัดขึ้นบรรทัดใหม่ — ถ้าจะนำเข้า ควรใช้ Excel/CSV; ถ้าใช้ PDF ต้องอ่านด้วยตำแหน่งตัวอักษร
+- ถ้าเจ้าของต้องการ จะเพิ่ม `report_type = 'NO_SHOW_REPORT'` ใน schema ตอน Phase 2
 
 ---
 

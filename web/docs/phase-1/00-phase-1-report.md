@@ -3,6 +3,7 @@
 > วิภูอนันต์ รีสอร์ท — Accounting & Capital Planning System
 > สถานะ: **ส่งมอบเพื่อขอการยืนยัน** — ยังไม่เริ่ม Phase 2 จนกว่าจะได้รับการยืนยัน (ดูหัวข้อ "สิ่งที่ต้องยืนยัน")
 > อัปเดต 9 ต.ค. 2569: เจ้าของยืนยันว่า PMS คือ **eZee Absolute (Cloud)** และไม่ย้าย PMS — ปรับเอกสารและข้อมูลทดสอบตามนี้แล้ว
+> อัปเดต 10 ต.ค. 2569: ยืนยัน Django + PostgreSQL และขอบเขต Import Mapping 3 ประเภท; ได้ไฟล์ PDF จริง 5 ไฟล์ — ตรวจแล้ว ผลอยู่ใน 06 หัวข้อ 6.0.1 และปรับ schema ให้รับห้อง-คืนที่มีทศนิยม
 
 ## 1. สิ่งที่พัฒนา
 
@@ -14,7 +15,7 @@
 | 3 | Data Dictionary: ทุกตาราง ทุกคอลัมน์ สร้างอัตโนมัติจาก schema | [04-data-dictionary.md](04-data-dictionary.md) |
 | 4 | Workflow Diagrams 9 แผนภาพ (นำเข้า, วงจรเอกสาร, รายได้→เงินรับ→ธนาคาร, OTA, กระทบยอด, ปิดงวด, รายจ่าย, ภาษี, แผนเงินทุน) | [05-workflows.md](05-workflows.md) |
 | 5 | Import Mapping: Night Audit, Monthly Statistics, Front Desk Activities (+ Receipt Detail, Expense Voucher, Bank Statement) | [06-import-mapping.md](06-import-mapping.md) |
-| 6 | รายการข้อมูลที่ยังขาด 34 รายการ จัดลำดับความสำคัญ | [07-missing-information.md](07-missing-information.md) |
+| 6 | รายการข้อมูลที่ยังขาด 38 รายการ (ตอบแล้ว 2) จัดลำดับความสำคัญ | [07-missing-information.md](07-missing-information.md) |
 | 7 | Test Plan + ผลทดสอบ Phase 1 | [08-test-plan.md](08-test-plan.md) |
 
 นอกจากเอกสาร Phase 1 ได้สร้าง schema เป็นโค้ดและทดสอบจริง เพื่อให้การออกแบบตรวจสอบได้ ไม่ใช่แค่แผนภาพ:
@@ -49,7 +50,7 @@ web/db/tools/                          สร้าง data dictionary, ซ้�
 ## 3. วิธีทดสอบ
 
 ```bash
-web/db/run-tests.sh                                          # สร้าง DB ใหม่ + 202 checks
+web/db/run-tests.sh                                          # สร้าง DB ใหม่ + 204 checks
 PGDATABASE=resort_acct_test web/db/tools/gen-data-dictionary.sh --check
 web/db/tools/backup-restore-drill.sh
 ```
@@ -58,7 +59,7 @@ web/db/tools/backup-restore-drill.sh
 
 ## 4. Test Results
 
-- **202/202 checks ผ่าน** บน PostgreSQL 16.15 (10 ไฟล์ — ตารางรายไฟล์ใน 08 หัวข้อ 8.2)
+- **204/204 checks ผ่าน** บน PostgreSQL 16.15 (10 ไฟล์ — ตารางรายไฟล์ใน 08 หัวข้อ 8.2)
 - ซ้อมสำรอง/กู้คืน: ผ่าน — จำนวนแถวตรงกันทั้ง 40 ตาราง, งวดที่ปิดยังเป็น FINAL, ทุก journal สมดุล, trigger ทำงานหลังกู้คืน
 - Data dictionary ตรงกับ schema
 - ระหว่างพัฒนา เทสต์จับข้อบกพร่องได้ 3 จุดและแก้แล้ว (CHECK ที่ปล่อย NULL ผ่าน, สร้างงวดเป็น CLOSED ทันที, สร้างชุดจับคู่เป็น CONFIRMED ทันที)
@@ -89,17 +90,18 @@ web/db/tools/backup-restore-drill.sh
 | จำนวนเงินไม่มี float | ✅ (ทดสอบใน `01`) |
 | แยกข้อมูลนำเข้าดิบออกจากข้อมูลบัญชีที่ตรวจสอบแล้ว | ✅ (ชั้นข้อมูล 0–3, ทดสอบใน `04`) |
 | ทุกตาราง/คอลัมน์มีคำอธิบาย และ data dictionary ตรงกับ schema | ✅ |
-| กฎสำคัญทดสอบได้และผ่าน | ✅ 202/202 |
+| กฎสำคัญทดสอบได้และผ่าน | ✅ 204/204 |
 | ไม่มี mock data ในสิ่งที่ใช้ production (ข้อมูลทดสอบอยู่เฉพาะ `tests/` และติดป้าย) | ✅ |
 | เจ้าของยืนยันการออกแบบและข้อมูลที่ขาด (หัวข้อ 7) | ⏳ รอการยืนยัน |
 
 ## 7. สิ่งที่ต้องยืนยันก่อนเริ่ม Phase 2
 
 1. ~~ระบบ PMS ที่ใช้จริง (A1)~~ — ✅ **eZee Absolute (Cloud) ไม่ย้าย PMS** (ยืนยัน 9 ต.ค. 2569)
-2. **ไฟล์ตัวอย่างจริงจาก eZee** ของรายงานแต่ละประเภท (รวม Receipt Detail) + รูปแบบไฟล์ที่ดาวน์โหลดได้ PDF/Excel/CSV (A2, A3)
-3. การจอง OTA Collect ใน PMS เป็นราคา **เต็มหรือสุทธิ** (A5)
-4. **รายชื่อห้อง** 15 หรือ 16 ห้อง (B1)
-5. **รูปแบบกิจการ สถานะ VAT และนักบัญชีผู้ยืนยัน** (B2, B3)
+2. **ไฟล์ตัวอย่างจริงจาก eZee** — ✅ ได้ 5 ไฟล์ (Front Desk, Monthly/Yearly Statistics, Occupancy, No Show); **ยังขาด Night Audit**, Receipt Detail, Expense Voucher (A2); รูปแบบไฟล์: ✅ ตกลงใช้ตัวอ่าน PDF ใน Phase 2 ถ้า eZee ส่งออก Excel/CSV ไม่ได้ (A3)
+3. การจอง OTA Collect — ไฟล์จริงแสดงว่า eZee บันทึก Expedia Collect เป็น **ยอดสุทธิ (NET)**; ต้องตัดสินว่าจะบันทึกรายได้สุทธิหรือเต็ม (A5)
+4. **รายชื่อห้อง** — ✅ ขายได้ 15 ห้อง/วัน; ยังต้องการรายชื่อเลขห้อง (พบห้องเลข 16) (B1)
+5. **รูปแบบกิจการ สถานะ VAT และนักบัญชีผู้ยืนยัน** (B2, B3) + การตั้งภาษีใน eZee (A10)
 6. **รายชื่อ OTA และเงื่อนไข** (B6)
-7. **Technology stack** — แนะนำ Django + PostgreSQL บน VPS (D3)
-8. ความหมายของ "Import Mapping 3 ประเภท" ตรงกับที่ทำไว้ (Night Audit, Monthly Statistics, Front Desk Activities) หรือไม่
+7. ~~Technology stack~~ — ✅ **Django + PostgreSQL** (ยืนยัน 10 ต.ค. 2569)
+8. ~~Import Mapping 3 ประเภท~~ — ✅ **Night Audit, Monthly Statistics, Front Desk Activities** (ยืนยัน 10 ต.ค. 2569)
+9. (ใหม่) เงินของการจองที่ไม่มีการรับเงินใน eZee บันทึกที่ไหน (A9)

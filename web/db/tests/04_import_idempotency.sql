@@ -101,6 +101,18 @@ SELECT test.assert_succeeds(
            (SELECT file_id FROM t)),
     'an INVALID row is kept with its error list (shown to the user, nothing lost)');
 
+-- Statistics rows keep the PMS figures as printed (real eZee reports have half room-nights, e.g. 134.5 in a month).
+SELECT test.assert_succeeds(
+    format($$INSERT INTO pms_daily_statistics (property_id, stat_date, is_forecast, rooms_available, rooms_sold,
+                                               complimentary_rooms, occupancy_pct, room_charges, imported_file_id)
+             VALUES (test.prop(), '2026-04-10', false, 15, 4.5, 0, 30.00, 3780.00, %s)$$, (SELECT file_id FROM t)),
+    'a half room-night (day use) is stored as printed');
+SELECT test.assert_raises(
+    format($$INSERT INTO pms_daily_statistics (property_id, stat_date, is_forecast, rooms_available, rooms_sold,
+                                               complimentary_rooms, imported_file_id)
+             VALUES (test.prop(), '2026-04-11', false, 15, 15, 1, %s)$$, (SELECT file_id FROM t)),
+    '23514', 'sold + complimentary rooms cannot exceed rooms available');
+
 -- A corrected document may replace a voided one with the same source reference.
 UPDATE payments SET status = 'VOIDED', voided_by = test.usr('accountant'), voided_at = now(), void_reason = 'ยอดผิด นำเข้าใหม่'
 WHERE id = (SELECT id FROM t_pay);

@@ -193,8 +193,8 @@ CREATE TABLE pms_daily_statistics (
     stat_date           date NOT NULL,
     is_forecast         boolean NOT NULL,
     rooms_available     integer CHECK (rooms_available >= 0),
-    rooms_sold          integer CHECK (rooms_sold >= 0),
-    complimentary_rooms integer CHECK (complimentary_rooms >= 0),
+    rooms_sold          numeric(7, 2) CHECK (rooms_sold >= 0),
+    complimentary_rooms numeric(7, 2) CHECK (complimentary_rooms >= 0),
     occupancy_pct       numeric(6, 2) CHECK (occupancy_pct BETWEEN 0 AND 100),
     adr                 money_thb,
     revpar              money_thb,
@@ -208,7 +208,7 @@ CREATE TABLE pms_daily_statistics (
     import_row_id       bigint REFERENCES import_rows (id),
     created_at          timestamptz NOT NULL DEFAULT now(),
     UNIQUE (property_id, stat_date, imported_file_id),
-    CHECK (rooms_sold <= rooms_available)
+    CHECK (rooms_sold + COALESCE(complimentary_rooms, 0) <= rooms_available)
 );
 COMMENT ON TABLE pms_daily_statistics IS 'สถิติรายวันจาก Monthly Statistics (อัตราเข้าพัก ADR RevPAR) — ใช้แสดงผลและตรวจทานเท่านั้น ไม่นับเป็นรายการบัญชี';
 COMMENT ON COLUMN pms_daily_statistics.id IS 'รหัส (PK)';
@@ -216,10 +216,10 @@ COMMENT ON COLUMN pms_daily_statistics.property_id IS 'กิจการ';
 COMMENT ON COLUMN pms_daily_statistics.stat_date IS 'วันที่ของสถิติ';
 COMMENT ON COLUMN pms_daily_statistics.is_forecast IS 'true = วันที่ยังไม่ถึงตอนออกรายงาน (ยอดจองล่วงหน้า ไม่ใช่ยอดจริง)';
 COMMENT ON COLUMN pms_daily_statistics.rooms_available IS 'ห้องที่ขายได้';
-COMMENT ON COLUMN pms_daily_statistics.rooms_sold IS 'ห้องที่ขายแล้ว';
-COMMENT ON COLUMN pms_daily_statistics.complimentary_rooms IS 'ห้องฟรี';
-COMMENT ON COLUMN pms_daily_statistics.occupancy_pct IS 'อัตราเข้าพัก (%) ตาม PMS';
-COMMENT ON COLUMN pms_daily_statistics.adr IS 'ราคาห้องเฉลี่ยต่อห้องที่ขาย (ADR)';
+COMMENT ON COLUMN pms_daily_statistics.rooms_sold IS 'ห้อง-คืนที่ขายแล้ว (มีทศนิยมได้ เช่น 0.5 สำหรับ day use — พบในรายงานจริง)';
+COMMENT ON COLUMN pms_daily_statistics.complimentary_rooms IS 'ห้องฟรี (eZee นับรวมในอัตราเข้าพักและ ADR)';
+COMMENT ON COLUMN pms_daily_statistics.occupancy_pct IS 'อัตราเข้าพัก (%) ตาม PMS = (ขาย + ห้องฟรี) ÷ ห้องที่ขายได้';
+COMMENT ON COLUMN pms_daily_statistics.adr IS 'ราคาห้องเฉลี่ย (ADR) ตาม PMS = ค่าห้อง ÷ (ขาย + ห้องฟรี)';
 COMMENT ON COLUMN pms_daily_statistics.revpar IS 'รายได้ต่อห้องที่มี (RevPAR)';
 COMMENT ON COLUMN pms_daily_statistics.guests IS 'จำนวนแขก';
 COMMENT ON COLUMN pms_daily_statistics.room_charges IS 'ค่าห้องตาม PMS';

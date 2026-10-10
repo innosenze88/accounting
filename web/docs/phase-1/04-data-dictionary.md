@@ -439,10 +439,10 @@
 | `stat_date` | date | NOT NULL |  |  | วันที่ของสถิติ |
 | `is_forecast` | boolean | NOT NULL |  |  | true = วันที่ยังไม่ถึงตอนออกรายงาน (ยอดจองล่วงหน้า ไม่ใช่ยอดจริง) |
 | `rooms_available` | integer |  |  |  | ห้องที่ขายได้ |
-| `rooms_sold` | integer |  |  |  | ห้องที่ขายแล้ว |
-| `complimentary_rooms` | integer |  |  |  | ห้องฟรี |
-| `occupancy_pct` | numeric(6,2) |  |  |  | อัตราเข้าพัก (%) ตาม PMS |
-| `adr` | money_thb (numeric(14,2)) |  |  |  | ราคาห้องเฉลี่ยต่อห้องที่ขาย (ADR) |
+| `rooms_sold` | numeric(7,2) |  |  |  | ห้อง-คืนที่ขายแล้ว (มีทศนิยมได้ เช่น 0.5 สำหรับ day use — พบในรายงานจริง) |
+| `complimentary_rooms` | numeric(7,2) |  |  |  | ห้องฟรี (eZee นับรวมในอัตราเข้าพักและ ADR) |
+| `occupancy_pct` | numeric(6,2) |  |  |  | อัตราเข้าพัก (%) ตาม PMS = (ขาย + ห้องฟรี) ÷ ห้องที่ขายได้ |
+| `adr` | money_thb (numeric(14,2)) |  |  |  | ราคาห้องเฉลี่ย (ADR) ตาม PMS = ค่าห้อง ÷ (ขาย + ห้องฟรี) |
 | `revpar` | money_thb (numeric(14,2)) |  |  |  | รายได้ต่อห้องที่มี (RevPAR) |
 | `guests` | integer |  |  |  | จำนวนแขก |
 | `room_charges` | money_thb (numeric(14,2)) |  |  |  | ค่าห้องตาม PMS |
